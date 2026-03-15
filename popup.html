@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YomiRuby</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="container">
+      <h1>YomiRuby</h1>
+
+      <label class="toggle-row" for="tabToggle">
+        <input id="tabToggle" type="checkbox">
+        <span id="toggleLabel">Enable on this tab</span>
+      </label>
+
+      <button id="annotateBtn" type="button">Run Annotation Now</button>
+      <button id="settingsBtn" type="button" class="secondary">Open Settings</button>
+
+      <p id="statusText" role="status" aria-live="polite"></p>
+    </main>
+
+    <script src="utils/constants.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
