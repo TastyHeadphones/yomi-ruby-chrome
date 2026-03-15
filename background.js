@@ -300,6 +300,17 @@ async function annotateTextBatch(texts) {
     resultByText.set(text, result);
   }
 
+  const firstErrorResult = uniqueTexts
+    .map((text) => resultByText.get(text))
+    .find((result) => result && result.error);
+  if (firstErrorResult) {
+    return {
+      ok: false,
+      error: firstErrorResult.error,
+      details: firstErrorResult.details || "Furigana API request failed."
+    };
+  }
+
   return {
     ok: true,
     results: normalizedTexts.map((text) => resultByText.get(text) || { text, tokens: [{ surface: text }] })
@@ -314,38 +325,150 @@ async function annotateSingleText(text, settings) {
     return { text, tokens: [{ surface: text }] };
   }
 
-  const chunks = splitTextForApi(text, C.LIMITS.MAX_TEXT_LENGTH_PER_NODE);
+  const sentenceUnits = splitTextIntoSentenceUnits(text);
   const mergedTokens = [];
+  let lastError = null;
 
-  for (const chunk of chunks) {
-    if (!chunk) {
+  for (const sentence of sentenceUnits) {
+    if (!sentence) {
       continue;
     }
-    if (!Japanese.containsKanji(chunk)) {
-      mergedTokens.push({ surface: chunk, furigana: "" });
-      continue;
-    }
-    try {
-      const tokens = await getFuriganaTokensForChunk(chunk, settings);
-      if (!tokens.length) {
-        mergedTokens.push({ surface: chunk, furigana: "" });
-      } else {
-        mergedTokens.push(...tokens);
+    const sentenceSegments = splitSentenceIntoApiCompatibleSegments(sentence);
+    for (const segment of sentenceSegments) {
+      const segmentText = segment.text;
+      if (!segmentText) {
+        continue;
       }
-    } catch (error) {
-      return {
-        text,
-        tokens: [{ surface: text, furigana: "" }],
-        error: normalizeErrorCode(error),
-        details: error?.message || String(error)
-      };
+      if (!segment.requestable || !Japanese.containsKanji(segmentText)) {
+        mergedTokens.push({ surface: segmentText, furigana: "" });
+        continue;
+      }
+
+      const chunks = splitTextForApi(segmentText, C.LIMITS.MAX_TEXT_LENGTH_PER_NODE);
+      for (const chunk of chunks) {
+        if (!chunk) {
+          continue;
+        }
+        if (!Japanese.containsKanji(chunk)) {
+          mergedTokens.push({ surface: chunk, furigana: "" });
+          continue;
+        }
+        try {
+          const tokens = await getFuriganaTokensForChunk(chunk, settings);
+          if (!tokens.length) {
+            mergedTokens.push({ surface: chunk, furigana: "" });
+          } else {
+            mergedTokens.push(...tokens);
+          }
+        } catch (error) {
+          if (isInvalidParamsError(error)) {
+            mergedTokens.push({ surface: chunk, furigana: "" });
+            continue;
+          }
+          if (settings.apiKey) {
+            return {
+              text,
+              tokens: [{ surface: text, furigana: "" }],
+              error: normalizeErrorCode(error),
+              details: error?.message || String(error)
+            };
+          }
+          lastError = error;
+          mergedTokens.push({ surface: chunk, furigana: "" });
+        }
+      }
     }
   }
 
-  return {
+  const response = {
     text,
     tokens: mergedTokens.length > 0 ? mergedTokens : [{ surface: text, furigana: "" }]
   };
+  if (lastError) {
+    response.warning = normalizeErrorCode(lastError);
+  }
+  return response;
+}
+
+function splitTextIntoSentenceUnits(text) {
+  if (!text) {
+    return [];
+  }
+
+  const units = [];
+  const sentenceRegex = /[^。．！？!?\n]+[。．！？!?\n]*/gu;
+  let lastIndex = 0;
+  let match = sentenceRegex.exec(text);
+
+  while (match) {
+    if (match.index > lastIndex) {
+      units.push(text.slice(lastIndex, match.index));
+    }
+    units.push(match[0]);
+    lastIndex = sentenceRegex.lastIndex;
+    match = sentenceRegex.exec(text);
+  }
+
+  if (lastIndex < text.length) {
+    units.push(text.slice(lastIndex));
+  }
+
+  return units.filter((unit) => unit.length > 0);
+}
+
+function splitSentenceIntoApiCompatibleSegments(text) {
+  const segments = [];
+  let buffer = "";
+  let currentRequestable = null;
+
+  for (const char of text) {
+    const requestable = isApiCompatibleChar(char);
+    if (currentRequestable === null) {
+      currentRequestable = requestable;
+      buffer = char;
+      continue;
+    }
+    if (requestable === currentRequestable) {
+      buffer += char;
+      continue;
+    }
+    segments.push({ text: buffer, requestable: currentRequestable });
+    buffer = char;
+    currentRequestable = requestable;
+  }
+
+  if (buffer) {
+    segments.push({ text: buffer, requestable: Boolean(currentRequestable) });
+  }
+
+  return segments;
+}
+
+function isApiCompatibleChar(char) {
+  // Japanese scripts are always sent to the API.
+  if (Japanese.containsJapanese(char)) {
+    return true;
+  }
+  if (/[\u30A0-\u30FF\uFF66-\uFF9F]/u.test(char)) {
+    return true;
+  }
+
+  // Keep ASCII text/punctuation in the same request segment.
+  if (/[\u0020-\u007E]/u.test(char)) {
+    return true;
+  }
+
+  // Allow common Japanese punctuation/full-width symbols.
+  if (/[\u3000-\u303F\uFF01-\uFF60]/u.test(char)) {
+    return true;
+  }
+
+  return false;
+}
+
+function isInvalidParamsError(error) {
+  const message = String(error?.message || "");
+  return /invalid params/i.test(message);
 }
 
 async function getFuriganaTokensForChunk(text, settings) {
@@ -357,14 +480,7 @@ async function getFuriganaTokensForChunk(text, settings) {
 
   let tokens = [];
   if (settings.apiKey) {
-    try {
-      tokens = await requestYahooFurigana(settings.apiKey, text);
-    } catch (error) {
-      if (!settings.demoModeEnabled) {
-        throw error;
-      }
-      tokens = createMockTokens(text);
-    }
+    tokens = await requestYahooFurigana(settings.apiKey, text);
   } else {
     tokens = createMockTokens(text);
   }
@@ -447,7 +563,7 @@ async function requestYahooFurigana(apiKey, text) {
   const requestBody = {
     id: String(Date.now()),
     jsonrpc: "2.0",
-    method: "jlp.furigana",
+    method: "jlp.furiganaservice.furigana",
     params: {
       q: text,
       grade: 1
@@ -461,8 +577,7 @@ async function requestYahooFurigana(apiKey, text) {
     {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "X-Yahoo-App-Id": apiKey
+        "Content-Type": "application/json"
       },
       body: JSON.stringify(requestBody)
     },
@@ -492,6 +607,9 @@ async function requestYahooFurigana(apiKey, text) {
 
   if (data?.error) {
     const message = String(data.error?.message || "Yahoo API error.");
+    if (/invalid params/i.test(message)) {
+      throw new YomiRubyError(C.ERROR_CODES.INVALID_RESPONSE, message);
+    }
     if (/quota|limit/i.test(message)) {
       throw new YomiRubyError(C.ERROR_CODES.QUOTA_EXCEEDED, message);
     }
