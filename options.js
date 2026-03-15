@@ -2,6 +2,7 @@
   const C = globalThis.YomiRubyConstants;
   const apiKeyInput = document.getElementById("apiKeyInput");
   const demoModeCheckbox = document.getElementById("demoModeCheckbox");
+  const testButton = document.getElementById("testButton");
   const saveButton = document.getElementById("saveButton");
   const feedback = document.getElementById("feedback");
 
@@ -21,6 +22,11 @@
       return { valid: false, message: "API key looks too short." };
     }
     return { valid: true };
+  }
+
+  function setBusy(isBusy) {
+    testButton.disabled = isBusy;
+    saveButton.disabled = isBusy;
   }
 
   async function loadSettings() {
@@ -61,10 +67,53 @@
     setFeedback("Settings saved.");
   }
 
-  saveButton.addEventListener("click", () => {
-    saveSettings().catch((error) => {
-      setFeedback(error?.message || "Failed to save settings.", true);
+  async function testApiKey() {
+    const apiKey = apiKeyInput.value.trim();
+    if (!apiKey) {
+      setFeedback("Enter an API key before testing.", true);
+      return;
+    }
+
+    const validation = validateApiKey(apiKey);
+    if (!validation.valid) {
+      setFeedback(validation.message || "Invalid API key.", true);
+      return;
+    }
+
+    setBusy(true);
+    setFeedback("Testing API key...");
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: C.MESSAGE_TYPES.TEST_API_KEY,
+        payload: { apiKey }
+      });
+      if (!response?.ok) {
+        setFeedback(response?.details || "API test failed.", true);
+        return;
+      }
+      setFeedback(response?.details || "API test succeeded.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  testButton.addEventListener("click", () => {
+    testApiKey().catch((error) => {
+      setBusy(false);
+      setFeedback(error?.message || "API test failed.", true);
     });
+  });
+
+  saveButton.addEventListener("click", () => {
+    setBusy(true);
+    saveSettings()
+      .catch((error) => {
+        setFeedback(error?.message || "Failed to save settings.", true);
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   });
 
   loadSettings().catch((error) => {

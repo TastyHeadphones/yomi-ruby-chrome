@@ -153,6 +153,11 @@ async function handleMessage(message, sender) {
       return annotateTextBatch(texts, sender);
     }
 
+    case C.MESSAGE_TYPES.TEST_API_KEY: {
+      const apiKey = String(payload.apiKey || "").trim();
+      return testApiKey(apiKey);
+    }
+
     default:
       return { ok: false, error: C.ERROR_CODES.INVALID_RESPONSE, details: "Unknown message type." };
   }
@@ -275,6 +280,46 @@ async function getSettings() {
         ? values[C.STORAGE_KEYS.DEMO_MODE_ENABLED]
         : C.DEFAULTS.DEMO_MODE_ENABLED
   };
+}
+
+async function testApiKey(apiKey) {
+  if (!apiKey) {
+    return {
+      ok: false,
+      error: C.ERROR_CODES.MISSING_API_KEY,
+      details: "Enter an API key before testing."
+    };
+  }
+
+  if (/\s/.test(apiKey)) {
+    return {
+      ok: false,
+      error: C.ERROR_CODES.INVALID_API_KEY,
+      details: "API key should not contain spaces."
+    };
+  }
+
+  try {
+    const tokens = await requestYahooFurigana(apiKey, "日本語の文章を解析します。");
+    const tokenCount = Array.isArray(tokens) ? tokens.length : 0;
+    if (tokenCount === 0) {
+      return {
+        ok: false,
+        error: C.ERROR_CODES.INVALID_RESPONSE,
+        details: "Yahoo API returned an empty token result."
+      };
+    }
+    return {
+      ok: true,
+      details: `API test succeeded (${tokenCount} tokens).`
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: normalizeErrorCode(error),
+      details: error?.message || "API test failed."
+    };
+  }
 }
 
 async function annotateTextBatch(texts) {
