@@ -79,4 +79,4 @@ YomiRuby 是一个生产可用的 Manifest V3 Chrome 扩展，可使用 HTML 语
 
 ## 许可证
 
-MIT，详见 [LICENSE](LICENSE)。
+Unlicense，详见 [LICENSE](LICENSE)。

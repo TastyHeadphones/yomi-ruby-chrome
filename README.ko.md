@@ -79,4 +79,4 @@ Issue/PR:
 
 ## 라이선스
 
-MIT. [LICENSE](LICENSE) 참고.
+Unlicense. [LICENSE](LICENSE) 참고.

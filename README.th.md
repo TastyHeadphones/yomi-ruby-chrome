@@ -79,4 +79,4 @@ Issue/PR:
 
 ## License
 
-MIT ดู [LICENSE](LICENSE)
+Unlicense ดู [LICENSE](LICENSE)

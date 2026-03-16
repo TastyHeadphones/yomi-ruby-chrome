@@ -83,4 +83,4 @@ Issues and pull requests are welcome:
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Unlicense. See [LICENSE](LICENSE).

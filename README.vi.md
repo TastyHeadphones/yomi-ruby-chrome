@@ -79,4 +79,4 @@ Issue/PR:
 
 ## License
 
-MIT. Xem [LICENSE](LICENSE).
+Unlicense. Xem [LICENSE](LICENSE).

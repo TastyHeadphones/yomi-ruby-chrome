@@ -79,4 +79,4 @@ Issue / PR を歓迎します:
 
 ## ライセンス
 
-MIT。詳細は [LICENSE](LICENSE) を参照してください。
+Unlicense。詳細は [LICENSE](LICENSE) を参照してください。

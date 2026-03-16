@@ -79,4 +79,4 @@ Issue/PR:
 
 ## Lisensi
 
-MIT. Lihat [LICENSE](LICENSE).
+Unlicense. Lihat [LICENSE](LICENSE).
