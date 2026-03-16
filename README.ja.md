@@ -1,84 +1,82 @@
-# YomiRuby Chrome 拡張（日本語，🇯🇵）
+# YomiRuby（日本語，🇯🇵）
 
 ![YomiRuby Promo](icons/promo_marquee_1400x560.png)
 
+[🇦🇺 English](README.en.md) | [🇨🇳 简体中文](README.zh-CN.md) | [🇮🇩 Bahasa Indonesia](README.id.md) | [🇰🇷 한국어](README.ko.md) | [🇹🇭 ไทย](README.th.md) | [🇻🇳 Tiếng Việt](README.vi.md) | [🇯🇵 日本語](README.ja.md)
+
 ## 概要
 
-YomiRuby は Manifest V3 ベースの Chrome 拡張です。Web ページ上の漢字に HTML `<ruby>/<rt>/<rp>` を使ってふりがなを付与します。
+YomiRuby は、Web ページ上の日本語漢字にふりがなを付与する Manifest V3 対応 Chrome 拡張です。HTML のセマンティックな ruby タグ（`<ruby>`, `<rt>`, `<rp>`）を使用します。
 
-## 主な機能
+## ハイライト
 
-- 画面上の可視テキストから漢字を含む日本語ノードを検出。
-- Yahoo! JAPAN Furigana API を利用（ベストエフォート）。
-- 文/段落単位で処理し、進捗表示・キャンセル・復元に対応。
-- `input`、`textarea`、`script`、`style`、`code`、`pre`、編集可能要素は除外。
-- 二重注釈を防止。
-- 設定画面で API キーを保存（`chrome.storage.sync`）。
-- API キー未設定時はデモモード利用可。
+- 文/段落単位の注釈処理フロー。
+- 進捗オーバーレイ、キャンセル、復元をサポート。
+- Yahoo API のクォータを考慮した速度制御とリトライ/バックオフ。
+- 設定画面で API キーのテストと保存が可能。
+- API キー未設定時はデモモードで動作確認可能。
+- レイアウト破壊を抑える保守的な DOM 更新。
 
-## インストール
+## クイックスタート
 
-1. このリポジトリを clone またはダウンロード。
-2. `chrome://extensions` を開く。
-3. **デベロッパーモード**を ON。
-4. **パッケージ化されていない拡張機能を読み込む**で本ディレクトリを選択。
+1. リポジトリを clone します。
+2. `chrome://extensions` を開きます。
+3. **デベロッパーモード**を有効化します。
+4. **パッケージ化されていない拡張機能を読み込む**で本フォルダを選択します。
+5. 拡張の **Settings** で API キーを入力し、**Test API Key** と **Save Settings** を実行します。
+6. 日本語ページで **Run Annotation Now** を押します。
 
-## Yahoo API キー設定
+## API キー設定
 
-1. ポップアップから **Settings** を開く。
-2. Yahoo! JAPAN App ID（API キー）を入力。
-3. **Test API Key** で疎通確認。
-4. **Save Settings** で保存。
+- 開発者ポータル: <https://developer.yahoo.co.jp/>
+- API リファレンス: <https://developer.yahoo.co.jp/webapi/jlp/furigana/v2/furigana.html>
+- リクエスト先: `https://jlp.yahooapis.jp/FuriganaService/V2/furigana`
 
-開発者ポータル:
-- <https://developer.yahoo.co.jp/>
-- Furigana API リファレンス: <https://developer.yahoo.co.jp/webapi/jlp/furigana/v2/furigana.html>
+## アーキテクチャ
 
-## 使い方
-
-1. 日本語ページを開く。
-2. YomiRuby ポップアップを開く。
-3. **Enable on all pages** を切り替える。
-4. **Run Annotation Now** を押す。
-5. 処理中は **Cancel**、注釈解除は **Restore** を利用。
+| コンポーネント | 役割 |
+|---|---|
+| `background.js` | API 通信、速度制御、リトライ、タブ状態管理 |
+| `content.js` | DOM 走査、ruby 注入、進捗表示、キャンセル/復元 |
+| `popup.*` | 有効化、実行、キャンセル、復元、設定画面起動 |
+| `options.*` | API キー入力、検証、テスト、保存 |
+| `utils/*` | 定数、文字種判定、DOM/ruby ユーティリティ |
 
 ## 権限
 
-- `storage`: API キー、設定、セッション状態の保存。
-- `tabs`: アクティブタブ取得とコマンド送信。
-- `scripting`: 必要時にコンテンツスクリプトを注入。
-- Host permissions:
-  - `<all_urls>`: Web ページ注釈のため。
-  - `https://jlp.yahooapis.jp/*`: Yahoo API 呼び出しのため。
+| 権限 | 用途 |
+|---|---|
+| `storage` | API キー、設定、一時ステータスの保存 |
+| `tabs` | アクティブタブの取得とコマンド送信 |
+| `scripting` | 必要時のコンテンツスクリプト注入 |
+| `<all_urls>` | 一般サイトでの注釈実行 |
+| `https://jlp.yahooapis.jp/*` | Yahoo Furigana API 呼び出し |
+
+## プライバシーとセキュリティ
+
+- 詳細: [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
+- API キーはユーザーが提供し、ソースにハードコードしません。
+- 注釈実行時のみ必要テキストを Yahoo API に送信します。
+- YomiRuby 独自の収集サーバーは使用しません。
 
 ## 既知の制限
 
-- ふりがな整合は API 依存のベストエフォート。
-- 動的ページ、shadow DOM、canvas テキストは一部未対応の場合あり。
-- 長文は分割処理のため境界で精度が落ちることがあります。
+- ふりがな対応は API の分かち書き結果に依存するベストエフォートです。
+- 動的サイト、shadow DOM、canvas テキストは一部未対応の可能性があります。
+- 大規模ページでは安全性優先のため処理時間が長くなります。
 
-## プライバシー
+## ロードマップ
 
-- 詳細: [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
-- API キーはユーザー提供で、コードにハードコードしません。
-- 注釈実行時のみ必要テキストを Yahoo API に送信します。
+- 語句単位アラインメントの改善とユーザー辞書対応。
+- サイト別の許可/除外設定。
+- 動的コンテンツへの差分注釈。
 
-## フォルダ構成
+## コントリビュート
 
-```text
-yomi-ruby-chrome/
-├── manifest.json
-├── background.js
-├── content.js
-├── popup.html
-├── popup.js
-├── popup.css
-├── options.html
-├── options.js
-├── options.css
-├── utils/
-├── icons/
-├── PRIVACY_POLICY.md
-├── README.md
-└── README.*.md
-```
+Issue / PR を歓迎します:
+
+- <https://github.com/TastyHeadphones/yomi-ruby-chrome/issues>
+
+## ライセンス
+
+MIT。詳細は [LICENSE](LICENSE) を参照してください。

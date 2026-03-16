@@ -1,64 +1,82 @@
-# YomiRuby Chrome Extension (Tiếng Việt, 🇻🇳)
+# YomiRuby (Tiếng Việt, 🇻🇳)
 
 ![YomiRuby Promo](icons/promo_marquee_1400x560.png)
 
+[🇦🇺 English](README.en.md) | [🇨🇳 简体中文](README.zh-CN.md) | [🇮🇩 Bahasa Indonesia](README.id.md) | [🇰🇷 한국어](README.ko.md) | [🇹🇭 ไทย](README.th.md) | [🇻🇳 Tiếng Việt](README.vi.md) | [🇯🇵 日本語](README.ja.md)
+
 ## Tổng quan
 
-YomiRuby là tiện ích Chrome Manifest V3 dùng để thêm furigana cho kanji tiếng Nhật trên trang web bằng thẻ HTML `<ruby>`, `<rt>`, `<rp>`.
+YomiRuby là tiện ích Chrome Manifest V3 sẵn sàng cho production, dùng để thêm furigana cho kanji tiếng Nhật bằng thẻ HTML ruby (`ruby`, `rt`, `rp`).
 
-## Tính năng
+## Điểm nổi bật
 
-- Phát hiện node văn bản tiếng Nhật có kanji và đang hiển thị.
-- Gọi Yahoo! JAPAN Furigana API (best effort).
-- Xử lý theo câu/đoạn, có hiển thị tiến trình, hủy và khôi phục.
-- Bỏ qua `input`, `textarea`, `script`, `style`, `code`, `pre` và vùng có thể chỉnh sửa.
-- Chống chú thích lặp.
-- Lưu API key người dùng trong Settings (`chrome.storage.sync`).
-- Có demo mode khi chưa có API key.
+- Xử lý theo câu/đoạn để ổn định trên trang dài.
+- Hiển thị tiến trình, hỗ trợ hủy và khôi phục.
+- Điều tiết quota API (giãn cách request, retry, backoff).
+- Kiểm tra API key trực tiếp trong Settings.
+- Có demo mode khi chưa cấu hình API key.
+- Cập nhật DOM theo hướng an toàn để giảm rủi ro vỡ layout.
 
-## Cài đặt
+## Bắt đầu nhanh
 
-1. Clone hoặc tải repo này.
+1. Clone repository này.
 2. Mở `chrome://extensions`.
 3. Bật **Developer mode**.
-4. Chọn **Load unpacked** và chọn thư mục dự án.
+4. Chọn **Load unpacked** và trỏ tới thư mục dự án.
+5. Vào **Settings**, nhập API key, bấm **Test API Key** rồi **Save Settings**.
+6. Mở trang tiếng Nhật và bấm **Run Annotation Now**.
 
-## Thiết lập Yahoo API Key
+## Thiết lập API Key
 
-1. Mở **Settings** từ popup tiện ích.
-2. Nhập Yahoo! JAPAN App ID (API key).
-3. Nhấn **Test API Key**.
-4. Nhấn **Save Settings**.
-
-Cổng nhà phát triển:
-- <https://developer.yahoo.co.jp/>
+- Cổng developer: <https://developer.yahoo.co.jp/>
 - Tài liệu API: <https://developer.yahoo.co.jp/webapi/jlp/furigana/v2/furigana.html>
+- Endpoint: `https://jlp.yahooapis.jp/FuriganaService/V2/furigana`
 
-## Cách dùng
+## Kiến trúc
 
-1. Mở trang web tiếng Nhật.
-2. Mở popup YomiRuby.
-3. Bật **Enable on all pages**.
-4. Nhấn **Run Annotation Now**.
-5. Dùng **Cancel** khi đang chạy hoặc **Restore** để bỏ ruby.
+| Thành phần | Trách nhiệm |
+|---|---|
+| `background.js` | Gọi API, điều tiết tốc độ, retry, quản lý trạng thái |
+| `content.js` | Duyệt DOM, chèn ruby, hiển thị tiến trình, hủy/khôi phục |
+| `popup.*` | Điều khiển chạy, hủy, khôi phục, mở Settings |
+| `options.*` | Nhập, kiểm tra, test và lưu API key |
+| `utils/*` | Hằng số và tiện ích xử lý văn bản/DOM |
 
 ## Quyền truy cập
 
-- `storage`: lưu API key, cấu hình và trạng thái phiên.
-- `tabs`: lấy tab hiện tại và gửi lệnh.
-- `scripting`: chèn content script khi cần.
-- Host permissions:
-  - `<all_urls>` để chú thích trên trang web.
-  - `https://jlp.yahooapis.jp/*` để gọi Yahoo API.
+| Quyền | Mục đích |
+|---|---|
+| `storage` | Lưu API key, cấu hình và trạng thái tạm thời |
+| `tabs` | Xác định tab hiện tại và gửi lệnh |
+| `scripting` | Bơm content script khi cần |
+| `<all_urls>` | Chú thích trên website phổ biến |
+| `https://jlp.yahooapis.jp/*` | Gọi Yahoo API |
 
-## Giới hạn đã biết
-
-- Việc canh hàng giữa kanji và cách đọc là best effort, phụ thuộc tokenization của API.
-- Trang động phức tạp, shadow DOM, canvas text có thể không được hỗ trợ đầy đủ.
-- Nội dung dài được chia nhỏ, có thể giảm độ chính xác ở ranh giới chunk.
-
-## Quyền riêng tư
+## Quyền riêng tư và bảo mật
 
 - Chính sách đầy đủ: [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
-- API key do người dùng tự cung cấp.
-- Chỉ gửi văn bản cần thiết tới Yahoo API khi chạy annotate.
+- API key do người dùng tự cung cấp, không hardcode.
+- Chỉ gửi văn bản cần thiết khi người dùng chạy annotate.
+- Không có backend riêng của YomiRuby để lưu dữ liệu người dùng.
+
+## Giới hạn hiện tại
+
+- Căn chỉnh furigana là best effort, phụ thuộc vào tokenization của API.
+- Trang rất động, shadow DOM, canvas text có thể không hỗ trợ đầy đủ.
+- Trang cực lớn có thể chạy chậm hơn do ưu tiên an toàn.
+
+## Lộ trình
+
+- Cải thiện căn chỉnh theo cụm từ và hỗ trợ từ điển người dùng.
+- Allowlist/denylist theo từng website.
+- Annotate tăng dần cho nội dung dynamic.
+
+## Đóng góp
+
+Issue/PR:
+
+- <https://github.com/TastyHeadphones/yomi-ruby-chrome/issues>
+
+## License
+
+MIT. Xem [LICENSE](LICENSE).

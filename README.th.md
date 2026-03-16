@@ -1,64 +1,82 @@
-# YomiRuby Chrome Extension (ภาษาไทย, 🇹🇭)
+# YomiRuby (ภาษาไทย, 🇹🇭)
 
 ![YomiRuby Promo](icons/promo_marquee_1400x560.png)
 
-## ภาพรวมโครงการ
+[🇦🇺 English](README.en.md) | [🇨🇳 简体中文](README.zh-CN.md) | [🇮🇩 Bahasa Indonesia](README.id.md) | [🇰🇷 한국어](README.ko.md) | [🇹🇭 ไทย](README.th.md) | [🇻🇳 Tiếng Việt](README.vi.md) | [🇯🇵 日本語](README.ja.md)
 
-YomiRuby คือส่วนขยาย Chrome แบบ Manifest V3 ที่ใส่ฟุริงานะเหนือคันจิภาษาญี่ปุ่นบนเว็บเพจ โดยใช้แท็ก HTML `<ruby>`, `<rt>`, `<rp>`.
+## ภาพรวม
 
-## ความสามารถหลัก
+YomiRuby คือส่วนขยาย Chrome แบบ Manifest V3 ที่พร้อมใช้งานจริงสำหรับใส่ฟุริงานะให้คันจิภาษาญี่ปุ่นบนเว็บ โดยใช้แท็ก HTML ruby (`ruby`, `rt`, `rp`).
 
-- ตรวจจับข้อความภาษาญี่ปุ่นที่มองเห็นได้และมีคันจิ
-- เรียก Yahoo! JAPAN Furigana API (best effort)
-- ประมวลผลเป็นประโยค/ย่อหน้า พร้อมแสดงความคืบหน้า ยกเลิก และคืนค่า
-- ข้าม `input`, `textarea`, `script`, `style`, `code`, `pre` และองค์ประกอบที่แก้ไขได้
-- ป้องกันการใส่ฟุริงานะซ้ำ
-- บันทึก API key ของผู้ใช้ในหน้า Settings (`chrome.storage.sync`)
-- มีโหมดเดโมเมื่อยังไม่มี API key
+## จุดเด่น
 
-## การติดตั้ง
+- ประมวลผลตามประโยค/ย่อหน้า
+- แสดงความคืบหน้า พร้อมปุ่มยกเลิกและคืนค่า
+- ควบคุมโควตา API (หน่วงคำขอ, retry, backoff)
+- ทดสอบ API key ได้จากหน้า Settings
+- รองรับโหมดเดโมเมื่อไม่มี API key
+- ปรับ DOM แบบระมัดระวังเพื่อลดผลกระทบต่อ layout
 
-1. clone หรือดาวน์โหลดรีโพนี้
+## เริ่มใช้งานแบบเร็ว
+
+1. clone รีโพนี้
 2. เปิด `chrome://extensions`
 3. เปิด **Developer mode**
-4. กด **Load unpacked** แล้วเลือกโฟลเดอร์โปรเจกต์
+4. กด **Load unpacked** และเลือกโฟลเดอร์โปรเจกต์
+5. เปิด **Settings**, ใส่ API key, กด **Test API Key** และ **Save Settings**
+6. เปิดหน้าเว็บภาษาญี่ปุ่น แล้วกด **Run Annotation Now**
 
-## ตั้งค่า Yahoo API Key
+## การตั้งค่า API Key
 
-1. เปิด **Settings** จาก popup ของส่วนขยาย
-2. ใส่ Yahoo! JAPAN App ID (API key)
-3. กด **Test API Key**
-4. กด **Save Settings**
-
-พอร์ทัลนักพัฒนา:
-- <https://developer.yahoo.co.jp/>
+- พอร์ทัลนักพัฒนา: <https://developer.yahoo.co.jp/>
 - เอกสาร API: <https://developer.yahoo.co.jp/webapi/jlp/furigana/v2/furigana.html>
+- Endpoint: `https://jlp.yahooapis.jp/FuriganaService/V2/furigana`
 
-## วิธีใช้งาน
+## สถาปัตยกรรม
 
-1. เปิดเว็บภาษาญี่ปุ่น
-2. เปิด popup ของ YomiRuby
-3. เปิด **Enable on all pages**
-4. กด **Run Annotation Now**
-5. ใช้ **Cancel** ระหว่างทำงาน หรือ **Restore** เพื่อลบ ruby
+| ส่วนประกอบ | หน้าที่ |
+|---|---|
+| `background.js` | เรียก API, คุมอัตราการส่ง, retry, จัดการสถานะงาน |
+| `content.js` | สแกน DOM, แทรก ruby, แสดง progress, cancel/restore |
+| `popup.*` | ควบคุมการทำงาน (enable/run/cancel/restore/settings) |
+| `options.*` | กรอก/ตรวจสอบ/ทดสอบ/บันทึก API key |
+| `utils/*` | ค่าคงที่และยูทิลิตี้ข้อความ/DOM |
 
 ## สิทธิ์ที่ใช้
 
-- `storage`: เก็บ API key, การตั้งค่า และสถานะ session
-- `tabs`: อ่านแท็บปัจจุบันและส่งคำสั่ง
-- `scripting`: ฉีด content script เมื่อจำเป็น
-- Host permissions:
-  - `<all_urls>` สำหรับใส่คำอ่านบนเว็บ
-  - `https://jlp.yahooapis.jp/*` สำหรับเรียก Yahoo API
+| สิทธิ์ | เหตุผล |
+|---|---|
+| `storage` | เก็บ API key, การตั้งค่า, สถานะชั่วคราว |
+| `tabs` | เข้าถึงแท็บปัจจุบันและส่งคำสั่ง |
+| `scripting` | ฉีด content script เมื่อจำเป็น |
+| `<all_urls>` | ใส่ฟุริงานะบนเว็บทั่วไป |
+| `https://jlp.yahooapis.jp/*` | เรียก Yahoo API |
+
+## ความเป็นส่วนตัวและความปลอดภัย
+
+- นโยบายฉบับเต็ม: [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
+- API key มาจากผู้ใช้และไม่ hardcode ในซอร์สโค้ด
+- ส่งข้อความไป Yahoo API เฉพาะตอนที่ผู้ใช้สั่ง annotate
+- ไม่มี backend ของ YomiRuby สำหรับเก็บข้อมูลผู้ใช้
 
 ## ข้อจำกัดที่ทราบ
 
-- การจับคู่คันจิกับคำอ่านเป็นแบบ best effort ตามคุณภาพ tokenization ของ API
-- เว็บแบบ dynamic มาก, shadow DOM, และข้อความบน canvas อาจรองรับไม่ครบ
-- ข้อความยาวจะถูกแบ่งเป็นช่วง ทำให้ความแม่นยำบริเวณรอยต่ออาจลดลง
+- ความแม่นของฟุริงานะขึ้นกับผล tokenization ของ API
+- เว็บที่ dynamic มาก, shadow DOM, canvas อาจรองรับได้ไม่ครบ
+- หน้ายาวมากอาจใช้เวลานานขึ้นเพื่อความเสถียร
 
-## ความเป็นส่วนตัว
+## Roadmap
 
-- นโยบายฉบับเต็ม: [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
-- ผู้ใช้เป็นผู้จัดหา API key เอง
-- ข้อความจะถูกส่งไป Yahoo API เฉพาะตอนสั่ง annotate เท่านั้น
+- ปรับปรุงการจับคู่ระดับวลีและรองรับพจนานุกรมผู้ใช้
+- ตั้งค่า allowlist/denylist รายเว็บไซต์
+- รองรับการ annotate แบบ incremental สำหรับเนื้อหา dynamic
+
+## การมีส่วนร่วม
+
+Issue/PR:
+
+- <https://github.com/TastyHeadphones/yomi-ruby-chrome/issues>
+
+## License
+
+MIT ดู [LICENSE](LICENSE)

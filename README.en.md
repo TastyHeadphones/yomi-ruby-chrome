@@ -1,84 +1,86 @@
-# YomiRuby Chrome Extension (English, 🇦🇺/Global)
+# YomiRuby (English, 🇦🇺/Global)
 
 ![YomiRuby Promo](icons/promo_marquee_1400x560.png)
 
-## Project Overview
+[🇦🇺 English](README.en.md) | [🇨🇳 简体中文](README.zh-CN.md) | [🇮🇩 Bahasa Indonesia](README.id.md) | [🇰🇷 한국어](README.ko.md) | [🇹🇭 ไทย](README.th.md) | [🇻🇳 Tiếng Việt](README.vi.md) | [🇯🇵 日本語](README.ja.md)
 
-YomiRuby is a Manifest V3 Chrome extension that annotates Japanese kanji on web pages with furigana using HTML `<ruby>`, `<rt>`, and `<rp>` tags.
+## Overview
 
-## Features
+YomiRuby is a production-ready Manifest V3 Chrome extension that annotates Japanese text with furigana using semantic HTML ruby tags (`<ruby>`, `<rt>`, `<rp>`).
 
-- Detects visible Japanese text nodes containing kanji.
-- Requests furigana from Yahoo! JAPAN Furigana API (best effort).
-- Annotates by sentence/paragraph with progress display, cancel, and restore support.
-- Avoids `input`, `textarea`, `script`, `style`, `code`, `pre`, and editable elements.
-- Prevents double annotation.
-- Supports user-provided API key in Settings (`chrome.storage.sync`).
-- Includes demo mode when API key is missing.
+## Highlights
 
-## Installation
+- Sentence and paragraph-based annotation flow.
+- Progress overlay with live status updates.
+- Cancel and restore actions for safe iteration.
+- Quota-aware pacing and retry/backoff logic for Yahoo API.
+- API key test flow in Settings page.
+- Demo mode fallback when API key is missing.
+- Conservative DOM updates to reduce layout breakage.
 
-1. Clone or download this repository.
+## Quick Start
+
+1. Clone this repository.
 2. Open `chrome://extensions`.
 3. Enable **Developer mode**.
-4. Click **Load unpacked** and select this project folder.
+4. Click **Load unpacked** and select this folder.
+5. Open extension **Settings**, set API key, click **Test API Key**, then **Save Settings**.
+6. Visit a Japanese page and click **Run Annotation Now**.
 
-## Yahoo API Key Setup
+## API Key Setup
 
-1. Open **Settings** in the extension popup.
-2. Paste your Yahoo! JAPAN App ID (API key).
-3. Click **Test API Key**.
-4. Click **Save Settings**.
+- Developer portal: <https://developer.yahoo.co.jp/>
+- API reference: <https://developer.yahoo.co.jp/webapi/jlp/furigana/v2/furigana.html>
 
-Developer portal:
-- <https://developer.yahoo.co.jp/>
-- Furigana API reference: <https://developer.yahoo.co.jp/webapi/jlp/furigana/v2/furigana.html>
+YomiRuby sends requests to:
 
-## How to Use
+- `https://jlp.yahooapis.jp/FuriganaService/V2/furigana`
 
-1. Open a Japanese web page.
-2. Open YomiRuby popup.
-3. Toggle **Enable on all pages**.
-4. Click **Run Annotation Now**.
-5. If needed, use **Cancel** during processing or **Restore** to remove ruby tags.
+## Architecture
+
+| Component | Responsibility |
+|---|---|
+| `background.js` | API communication, quota pacing, retries, and tab/job status |
+| `content.js` | DOM traversal, safe ruby injection, progress overlay, cancel/restore |
+| `popup.*` | User controls: enable, run, cancel, restore, open settings |
+| `options.*` | API key input, validation, API test, save settings |
+| `utils/*` | Constants, Japanese text helpers, DOM and ruby utilities |
 
 ## Permissions
 
-- `storage`: save API key/settings and session status.
-- `tabs`: get active tab and send commands.
-- `scripting`: inject content scripts when required.
-- Host permissions:
-  - `<all_urls>` for page annotation.
-  - `https://jlp.yahooapis.jp/*` for Yahoo API calls.
+| Permission | Why it is required |
+|---|---|
+| `storage` | Store API key/settings and temporary annotation status |
+| `tabs` | Access active tab and send annotation commands |
+| `scripting` | Ensure content scripts are available on target pages |
+| `<all_urls>` | Annotate general websites |
+| `https://jlp.yahooapis.jp/*` | Request furigana data from Yahoo API |
 
-## Known Limitations
-
-- Furigana alignment is best effort and depends on API tokenization.
-- Complex dynamic pages, shadow DOM, and canvas text may be partially unsupported.
-- Very long content is chunked, which may reduce precision at chunk boundaries.
-
-## Privacy
+## Privacy and Security
 
 - Full policy: [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
-- You provide your own Yahoo API key.
-- Text is sent to Yahoo API only when annotation runs.
+- API key is provided by the user and is never hardcoded.
+- Text is sent to Yahoo API only when annotation is requested.
+- No YomiRuby backend server is used.
 
-## Folder Structure
+## Limitations
 
-```text
-yomi-ruby-chrome/
-├── manifest.json
-├── background.js
-├── content.js
-├── popup.html
-├── popup.js
-├── popup.css
-├── options.html
-├── options.js
-├── options.css
-├── utils/
-├── icons/
-├── PRIVACY_POLICY.md
-├── README.md
-└── README.*.md
-```
+- Furigana alignment is best effort and depends on API tokenization output.
+- Dynamic pages (shadow DOM/canvas-heavy apps) may be only partially covered.
+- Very large pages can still be slower due to conservative processing.
+
+## Roadmap
+
+- Better phrase-level alignment and user dictionary support.
+- Optional site allow/deny lists.
+- Incremental annotation for dynamic content.
+
+## Contributing
+
+Issues and pull requests are welcome:
+
+- <https://github.com/TastyHeadphones/yomi-ruby-chrome/issues>
+
+## License
+
+MIT. See [LICENSE](LICENSE).

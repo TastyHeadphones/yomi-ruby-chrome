@@ -1,64 +1,82 @@
-# YomiRuby Chrome Extension (Bahasa Indonesia, 🇮🇩)
+# YomiRuby (Bahasa Indonesia, 🇮🇩)
 
 ![YomiRuby Promo](icons/promo_marquee_1400x560.png)
 
-## Ringkasan Proyek
+[🇦🇺 English](README.en.md) | [🇨🇳 简体中文](README.zh-CN.md) | [🇮🇩 Bahasa Indonesia](README.id.md) | [🇰🇷 한국어](README.ko.md) | [🇹🇭 ไทย](README.th.md) | [🇻🇳 Tiếng Việt](README.vi.md) | [🇯🇵 日本語](README.ja.md)
 
-YomiRuby adalah ekstensi Chrome Manifest V3 yang menambahkan furigana pada kanji Jepang di halaman web menggunakan tag HTML `<ruby>`, `<rt>`, dan `<rp>`.
+## Ringkasan
 
-## Fitur
+YomiRuby adalah ekstensi Chrome Manifest V3 siap produksi untuk menambahkan furigana pada teks Jepang menggunakan tag HTML ruby (`<ruby>`, `<rt>`, `<rp>`).
 
-- Mendeteksi node teks Jepang yang terlihat dan mengandung kanji.
-- Meminta furigana dari Yahoo! JAPAN Furigana API (best effort).
-- Proses per kalimat/paragraf dengan progress, cancel, dan restore.
-- Melewati `input`, `textarea`, `script`, `style`, `code`, `pre`, dan elemen editable.
-- Mencegah anotasi ganda.
-- Menyimpan API key milik pengguna di halaman Settings (`chrome.storage.sync`).
-- Mendukung mode demo saat API key belum diisi.
+## Keunggulan
 
-## Instalasi
+- Alur anotasi berbasis kalimat/paragraf.
+- Progress overlay, cancel, dan restore.
+- Kontrol kuota API (throttle, retry, backoff).
+- Uji API key langsung dari halaman Settings.
+- Demo mode jika API key belum tersedia.
+- Update DOM secara konservatif untuk mengurangi risiko layout rusak.
 
-1. Clone atau unduh repositori ini.
+## Mulai Cepat
+
+1. Clone repositori ini.
 2. Buka `chrome://extensions`.
 3. Aktifkan **Developer mode**.
-4. Klik **Load unpacked** lalu pilih folder proyek ini.
+4. Klik **Load unpacked** dan pilih folder proyek.
+5. Buka **Settings**, isi API key, klik **Test API Key**, lalu **Save Settings**.
+6. Buka halaman Jepang dan klik **Run Annotation Now**.
 
-## Konfigurasi Yahoo API Key
+## Konfigurasi API Key
 
-1. Buka **Settings** dari popup ekstensi.
-2. Isi Yahoo! JAPAN App ID (API key).
-3. Klik **Test API Key**.
-4. Klik **Save Settings**.
-
-Portal developer:
-- <https://developer.yahoo.co.jp/>
+- Portal developer: <https://developer.yahoo.co.jp/>
 - Referensi API: <https://developer.yahoo.co.jp/webapi/jlp/furigana/v2/furigana.html>
+- Endpoint: `https://jlp.yahooapis.jp/FuriganaService/V2/furigana`
 
-## Cara Pakai
+## Arsitektur
 
-1. Buka halaman web berbahasa Jepang.
-2. Buka popup YomiRuby.
-3. Aktifkan **Enable on all pages**.
-4. Klik **Run Annotation Now**.
-5. Gunakan **Cancel** saat berjalan, atau **Restore** untuk menghapus ruby.
+| Komponen | Tanggung jawab |
+|---|---|
+| `background.js` | Komunikasi API, throttle/retry, status pekerjaan |
+| `content.js` | Traversal DOM, injeksi ruby, progress, cancel/restore |
+| `popup.*` | Kontrol pengguna (enable, run, cancel, restore, settings) |
+| `options.*` | Input API key, validasi, test, simpan |
+| `utils/*` | Konstanta dan utilitas teks/DOM |
 
 ## Izin
 
-- `storage`: menyimpan API key, pengaturan, dan status sesi.
-- `tabs`: membaca tab aktif dan mengirim perintah.
-- `scripting`: menyuntikkan content script saat diperlukan.
-- Host permissions:
-  - `<all_urls>` untuk anotasi halaman.
-  - `https://jlp.yahooapis.jp/*` untuk panggilan API Yahoo.
+| Izin | Alasan |
+|---|---|
+| `storage` | Menyimpan API key, setting, dan status sesi |
+| `tabs` | Mengakses tab aktif dan kirim perintah |
+| `scripting` | Menjamin content script tersedia |
+| `<all_urls>` | Menjalankan anotasi di situs umum |
+| `https://jlp.yahooapis.jp/*` | Memanggil Yahoo API |
 
-## Batasan
-
-- Penyelarasan furigana bersifat best effort dan bergantung tokenisasi API.
-- Halaman sangat dinamis, shadow DOM, dan teks canvas mungkin tidak sepenuhnya tercakup.
-- Teks panjang diproses per chunk, sehingga akurasi bisa turun di batas chunk.
-
-## Privasi
+## Privasi dan Keamanan
 
 - Kebijakan lengkap: [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
-- Anda memakai API key milik sendiri.
-- Teks hanya dikirim ke Yahoo API saat anotasi dijalankan.
+- API key disediakan oleh pengguna, tidak hardcoded.
+- Teks hanya dikirim saat proses anotasi dijalankan.
+- Tidak ada backend YomiRuby untuk menyimpan data pengguna.
+
+## Keterbatasan
+
+- Penyelarasan furigana tetap best effort tergantung tokenisasi API.
+- Situs dinamis, shadow DOM, dan canvas dapat tidak sepenuhnya tercakup.
+- Halaman sangat besar tetap lebih lambat karena strategi yang aman.
+
+## Roadmap
+
+- Peningkatan alignment tingkat frasa dan dukungan kamus pengguna.
+- Allowlist/denylist per situs.
+- Anotasi inkremental untuk konten dinamis.
+
+## Kontribusi
+
+Issue/PR:
+
+- <https://github.com/TastyHeadphones/yomi-ruby-chrome/issues>
+
+## Lisensi
+
+MIT. Lihat [LICENSE](LICENSE).
