@@ -45,6 +45,12 @@ button.secondary {
   color: #1d4ed8;
 }
 
+button.danger {
+  background: #ffffff;
+  color: #b91c1c;
+  border-color: #b91c1c;
+}
+
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -55,4 +61,8 @@ button:disabled {
   font-size: 12px;
   min-height: 18px;
   color: #374151;
+}
+
+#cancelBtn {
+  display: none;
 }

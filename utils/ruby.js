@@ -27,6 +27,7 @@
     const ruby = doc.createElement("ruby");
     ruby.className = "yomiruby-ruby";
     ruby.setAttribute("data-yomiruby-annotated", "1");
+    ruby.setAttribute("data-yomiruby-surface", surface);
 
     const rt = doc.createElement("rt");
     rt.className = "yomiruby-rt";

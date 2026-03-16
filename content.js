@@ -11,6 +11,7 @@
 
   const processedNodes = new WeakSet();
   let annotationInProgress = false;
+  let cancelRequested = false;
   let progressCleanupTimer = null;
 
   const PROGRESS_ID = "yomiruby-progress-overlay";
@@ -95,6 +96,21 @@
     }
   }
 
+  function emitRuntimeProgress(state, progressPercent, message, meta, canceling = false) {
+    chrome.runtime
+      .sendMessage({
+        type: C.MESSAGE_TYPES.ANNOTATION_PROGRESS,
+        payload: {
+          state,
+          progressPercent,
+          message,
+          meta,
+          cancelRequested: canceling
+        }
+      })
+      .catch(() => {});
+  }
+
   function ensureProgressOverlay() {
     let overlay = document.getElementById(PROGRESS_ID);
     if (overlay) {
@@ -141,6 +157,7 @@
     if (progressMeta) {
       progressMeta.textContent = metaText;
     }
+    emitRuntimeProgress("running", percent, statusText, metaText, cancelRequested);
   }
 
   function finishProgress(ok, message, metaText) {
@@ -159,6 +176,10 @@
     if (progressMeta) {
       progressMeta.textContent = metaText || "";
     }
+
+    const state = ok ? "done" : cancelRequested ? "canceled" : "error";
+    const progressPercent = ok ? 100 : 0;
+    emitRuntimeProgress(state, progressPercent, message, metaText || "", cancelRequested);
 
     clearProgressCleanupTimer();
     progressCleanupTimer = setTimeout(() => {
@@ -192,6 +213,72 @@
     return [];
   }
 
+  function isCanceledResult(result) {
+    return (
+      result?.error === C.ERROR_CODES.CANCELED ||
+      result?.error === "canceled" ||
+      result?.canceled === true
+    );
+  }
+
+  function extractRubySurface(ruby) {
+    const fromAttribute = ruby.getAttribute("data-yomiruby-surface");
+    if (fromAttribute) {
+      return fromAttribute;
+    }
+
+    let surface = "";
+    for (const child of ruby.childNodes) {
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        const tagName = child.tagName ? child.tagName.toLowerCase() : "";
+        if (tagName === "rt" || tagName === "rp") {
+          continue;
+        }
+      }
+      if (child.nodeType === Node.TEXT_NODE) {
+        surface += child.nodeValue || "";
+      }
+    }
+    return surface || ruby.textContent || "";
+  }
+
+  function restoreAnnotations() {
+    const rubies = Array.from(
+      document.querySelectorAll("ruby.yomiruby-ruby[data-yomiruby-annotated='1']")
+    );
+    if (rubies.length === 0) {
+      return { restored: 0 };
+    }
+
+    const parentSet = new Set();
+    for (const ruby of rubies) {
+      if (!ruby.isConnected) {
+        continue;
+      }
+      const parent = ruby.parentNode;
+      const surface = extractRubySurface(ruby);
+      ruby.replaceWith(document.createTextNode(surface));
+      if (parent && parent.nodeType === Node.ELEMENT_NODE) {
+        parentSet.add(parent);
+      }
+    }
+
+    for (const parent of parentSet) {
+      if (typeof parent.normalize === "function") {
+        parent.normalize();
+      }
+    }
+
+    const overlay = document.getElementById(PROGRESS_ID);
+    if (overlay) {
+      overlay.remove();
+    }
+    clearProgressCleanupTimer();
+    cancelRequested = false;
+
+    return { restored: rubies.length };
+  }
+
   async function annotateParagraph(paragraph) {
     let scanned = 0;
     let replacedNodes = 0;
@@ -199,6 +286,15 @@
     let skipped = 0;
 
     while (true) {
+      if (cancelRequested) {
+        return {
+          ok: false,
+          error: C.ERROR_CODES.CANCELED,
+          details: "Canceled by user.",
+          canceled: true
+        };
+      }
+
       const nodes = Dom.collectAnnotatableTextNodes(paragraph, {
         maxNodes: C.LIMITS.MAX_TEXT_NODES_PER_PARAGRAPH,
         maxLength: C.LIMITS.MAX_TEXT_LENGTH_PER_NODE,
@@ -225,6 +321,14 @@
       }
 
       for (let index = 0; index < nodes.length; index += 1) {
+        if (cancelRequested) {
+          return {
+            ok: false,
+            error: C.ERROR_CODES.CANCELED,
+            details: "Canceled by user.",
+            canceled: true
+          };
+        }
         const node = nodes[index];
         const result = batchResponse.results?.[index];
         processedNodes.add(node);
@@ -267,6 +371,7 @@
     }
 
     annotationInProgress = true;
+    cancelRequested = false;
     clearProgressCleanupTimer();
     ensureAnnotationStyle();
 
@@ -304,9 +409,27 @@
       );
 
       for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex += 1) {
+        if (cancelRequested) {
+          finishProgress(false, "Annotation canceled.", "");
+          return {
+            ok: false,
+            error: C.ERROR_CODES.CANCELED,
+            details: "Canceled by user.",
+            canceled: true
+          };
+        }
         const paragraph = paragraphs[paragraphIndex];
         const result = await annotateParagraph(paragraph);
         if (!result.ok) {
+          if (isCanceledResult(result)) {
+            finishProgress(false, "Annotation canceled.", "");
+            return {
+              ok: false,
+              error: C.ERROR_CODES.CANCELED,
+              details: "Canceled by user.",
+              canceled: true
+            };
+          }
           finishProgress(
             false,
             "Annotation stopped.",
@@ -343,8 +466,26 @@
         `${paragraphs.length} / ${paragraphs.length} paragraphs | ruby ${totalAnnotatedTokens}`,
         "Final pass..."
       );
+      if (cancelRequested) {
+        finishProgress(false, "Annotation canceled.", "");
+        return {
+          ok: false,
+          error: C.ERROR_CODES.CANCELED,
+          details: "Canceled by user.",
+          canceled: true
+        };
+      }
       const finalResult = await annotateParagraph(root);
       if (!finalResult.ok) {
+        if (isCanceledResult(finalResult)) {
+          finishProgress(false, "Annotation canceled.", "");
+          return {
+            ok: false,
+            error: C.ERROR_CODES.CANCELED,
+            details: "Canceled by user.",
+            canceled: true
+          };
+        }
         finishProgress(
           false,
           "Annotation stopped.",
@@ -399,6 +540,31 @@
     const type = message?.type;
     if (type === C.MESSAGE_TYPES.PING) {
       sendResponse({ ok: true });
+      return;
+    }
+
+    if (type === C.MESSAGE_TYPES.CANCEL_ANNOTATION) {
+      cancelRequested = true;
+      emitRuntimeProgress("canceling", 0, "Cancel requested...", "", true);
+      sendResponse({ ok: true });
+      return;
+    }
+
+    if (type === C.MESSAGE_TYPES.RESTORE_PAGE) {
+      if (annotationInProgress) {
+        sendResponse({
+          ok: false,
+          error: C.ERROR_CODES.BUSY,
+          details: "Cannot restore while annotation is running."
+        });
+        return;
+      }
+      const restored = restoreAnnotations();
+      sendResponse({
+        ok: true,
+        stats: restored,
+        details: `Restored ${restored.restored} ruby annotations.`
+      });
       return;
     }
 

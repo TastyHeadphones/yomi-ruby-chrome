@@ -85,7 +85,7 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  chrome.storage.session.remove(tabStateKey(tabId)).catch(() => {});
+  chrome.storage.session.remove([tabStateKey(tabId), annotationStatusKey(tabId)]).catch(() => {});
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
@@ -123,7 +123,7 @@ async function handleMessage(message, sender) {
       if (!Number.isInteger(tabId)) {
         return { ok: false, error: C.ERROR_CODES.INVALID_RESPONSE, details: "tabId is required." };
       }
-      const enabled = await getTabState(tabId);
+      const enabled = await getGlobalEnabled();
       return { ok: true, enabled };
     }
 
@@ -133,7 +133,18 @@ async function handleMessage(message, sender) {
       if (!Number.isInteger(tabId)) {
         return { ok: false, error: C.ERROR_CODES.INVALID_RESPONSE, details: "tabId is required." };
       }
-      await setTabState(tabId, enabled);
+      await setGlobalEnabled(enabled);
+      return { ok: true, enabled };
+    }
+
+    case C.MESSAGE_TYPES.GET_GLOBAL_STATE: {
+      const enabled = await getGlobalEnabled();
+      return { ok: true, enabled };
+    }
+
+    case C.MESSAGE_TYPES.SET_GLOBAL_STATE: {
+      const enabled = Boolean(payload.enabled);
+      await setGlobalEnabled(enabled);
       return { ok: true, enabled };
     }
 
@@ -143,6 +154,48 @@ async function handleMessage(message, sender) {
         return { ok: false, error: C.ERROR_CODES.INVALID_RESPONSE, details: "tabId is required." };
       }
       return runAnnotationOnTab(tabId, { trigger: payload.trigger || "manual" });
+    }
+
+    case C.MESSAGE_TYPES.CANCEL_ANNOTATION: {
+      const tabId = Number(payload.tabId);
+      if (!Number.isInteger(tabId)) {
+        return { ok: false, error: C.ERROR_CODES.INVALID_RESPONSE, details: "tabId is required." };
+      }
+      return cancelAnnotationOnTab(tabId);
+    }
+
+    case C.MESSAGE_TYPES.RESTORE_PAGE: {
+      const tabId = Number(payload.tabId);
+      if (!Number.isInteger(tabId)) {
+        return { ok: false, error: C.ERROR_CODES.INVALID_RESPONSE, details: "tabId is required." };
+      }
+      return restorePageOnTab(tabId);
+    }
+
+    case C.MESSAGE_TYPES.GET_ANNOTATION_STATUS: {
+      const tabId = Number(payload.tabId);
+      if (!Number.isInteger(tabId)) {
+        return { ok: false, error: C.ERROR_CODES.INVALID_RESPONSE, details: "tabId is required." };
+      }
+      const status = await getAnnotationStatus(tabId);
+      return { ok: true, status };
+    }
+
+    case C.MESSAGE_TYPES.ANNOTATION_PROGRESS: {
+      const tabId = Number(payload.tabId || sender?.tab?.id);
+      if (!Number.isInteger(tabId)) {
+        return { ok: false, error: C.ERROR_CODES.INVALID_RESPONSE, details: "tabId is required." };
+      }
+      const state = String(payload.state || "running");
+      const status = await updateAnnotationStatus(tabId, {
+        running: state === "running" || state === "canceling",
+        cancelRequested: Boolean(payload.cancelRequested),
+        state,
+        progressPercent: Number.isFinite(payload.progressPercent) ? payload.progressPercent : 0,
+        message: String(payload.message || ""),
+        meta: String(payload.meta || "")
+      });
+      return { ok: true, status };
     }
 
     case C.MESSAGE_TYPES.OPEN_OPTIONS: {
@@ -166,10 +219,18 @@ async function handleMessage(message, sender) {
 }
 
 async function initializeDefaults() {
-  const values = await chrome.storage.sync.get([C.STORAGE_KEYS.DEMO_MODE_ENABLED]);
+  const values = await chrome.storage.sync.get([
+    C.STORAGE_KEYS.DEMO_MODE_ENABLED,
+    C.STORAGE_KEYS.ENABLED_GLOBALLY
+  ]);
   if (typeof values[C.STORAGE_KEYS.DEMO_MODE_ENABLED] !== "boolean") {
     await chrome.storage.sync.set({
       [C.STORAGE_KEYS.DEMO_MODE_ENABLED]: C.DEFAULTS.DEMO_MODE_ENABLED
+    });
+  }
+  if (typeof values[C.STORAGE_KEYS.ENABLED_GLOBALLY] !== "boolean") {
+    await chrome.storage.sync.set({
+      [C.STORAGE_KEYS.ENABLED_GLOBALLY]: C.DEFAULTS.ENABLED_GLOBALLY
     });
   }
 }
@@ -189,12 +250,60 @@ async function setTabState(tabId, enabled) {
   await chrome.storage.session.set({ [key]: enabled });
 }
 
+function annotationStatusKey(tabId) {
+  return `${C.SESSION_KEYS.ANNOTATION_STATUS_PREFIX}${tabId}`;
+}
+
+function defaultAnnotationStatus() {
+  return {
+    running: false,
+    cancelRequested: false,
+    state: "idle",
+    progressPercent: 0,
+    message: "",
+    meta: "",
+    updatedAt: 0
+  };
+}
+
+async function getAnnotationStatus(tabId) {
+  const key = annotationStatusKey(tabId);
+  const data = await chrome.storage.session.get([key]);
+  return data[key] || defaultAnnotationStatus();
+}
+
+async function updateAnnotationStatus(tabId, patch) {
+  const key = annotationStatusKey(tabId);
+  const current = await getAnnotationStatus(tabId);
+  const next = {
+    ...current,
+    ...patch,
+    updatedAt: Date.now()
+  };
+  await chrome.storage.session.set({ [key]: next });
+  return next;
+}
+
+async function setGlobalEnabled(enabled) {
+  await chrome.storage.sync.set({
+    [C.STORAGE_KEYS.ENABLED_GLOBALLY]: Boolean(enabled)
+  });
+}
+
+async function getGlobalEnabled() {
+  const values = await chrome.storage.sync.get([C.STORAGE_KEYS.ENABLED_GLOBALLY]);
+  if (typeof values[C.STORAGE_KEYS.ENABLED_GLOBALLY] === "boolean") {
+    return values[C.STORAGE_KEYS.ENABLED_GLOBALLY];
+  }
+  return C.DEFAULTS.ENABLED_GLOBALLY;
+}
+
 function isSupportedUrl(url) {
   return /^(https?|file):/i.test(url);
 }
 
 async function runAutoAnnotation(tabId) {
-  const enabled = await getTabState(tabId);
+  const enabled = await getGlobalEnabled();
   if (!enabled) {
     return;
   }
@@ -211,6 +320,142 @@ async function runAnnotationOnTab(tabId, payload) {
     };
   }
 
+  const currentStatus = await getAnnotationStatus(tabId);
+  if (currentStatus.running) {
+    return {
+      ok: false,
+      error: C.ERROR_CODES.BUSY,
+      details: "Annotation is already running on this page.",
+      status: currentStatus
+    };
+  }
+
+  const injected = await ensureContentScript(tabId);
+  if (!injected) {
+    return {
+      ok: false,
+      error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
+      details: "Could not load content script on this page."
+    };
+  }
+
+  await updateAnnotationStatus(tabId, {
+    running: true,
+    cancelRequested: false,
+    state: "running",
+    progressPercent: 0,
+    message: "Starting annotation...",
+    meta: ""
+  });
+
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: C.MESSAGE_TYPES.ANNOTATE_PAGE,
+      payload
+    });
+    if (!response?.ok) {
+      const isCanceled =
+        response?.error === C.ERROR_CODES.CANCELED ||
+        response?.error === "canceled" ||
+        response?.canceled === true;
+      await updateAnnotationStatus(tabId, {
+        running: false,
+        cancelRequested: false,
+        state: isCanceled ? "canceled" : "error",
+        progressPercent: isCanceled ? 0 : 100,
+        message: isCanceled ? "Canceled." : "Failed.",
+        meta: response?.details || response?.error || ""
+      });
+      return {
+        ok: false,
+        error: response?.error || C.ERROR_CODES.INVALID_RESPONSE,
+        details: response?.details || "Annotation failed in content script."
+      };
+    }
+    const stats = response?.stats || {};
+    await updateAnnotationStatus(tabId, {
+      running: false,
+      cancelRequested: false,
+      state: "done",
+      progressPercent: 100,
+      message: "Completed.",
+      meta: `scanned ${stats.scanned || 0}, ruby ${stats.annotatedTokens || 0}`
+    });
+    return response;
+  } catch (error) {
+    await updateAnnotationStatus(tabId, {
+      running: false,
+      cancelRequested: false,
+      state: "error",
+      progressPercent: 100,
+      message: "Failed.",
+      meta: error?.message || String(error)
+    });
+    return {
+      ok: false,
+      error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
+      details: error?.message || String(error)
+    };
+  }
+}
+
+async function cancelAnnotationOnTab(tabId) {
+  const status = await getAnnotationStatus(tabId);
+  if (!status.running) {
+    return {
+      ok: true,
+      details: "No running annotation job."
+    };
+  }
+
+  const injected = await ensureContentScript(tabId);
+  if (!injected) {
+    return {
+      ok: false,
+      error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
+      details: "Could not send cancel request to this page."
+    };
+  }
+
+  await updateAnnotationStatus(tabId, {
+    running: true,
+    cancelRequested: true,
+    state: "canceling",
+    message: "Cancel requested...",
+    meta: ""
+  });
+
+  try {
+    await chrome.tabs.sendMessage(tabId, {
+      type: C.MESSAGE_TYPES.CANCEL_ANNOTATION
+    });
+    return { ok: true, details: "Cancel request sent." };
+  } catch (error) {
+    await updateAnnotationStatus(tabId, {
+      running: false,
+      cancelRequested: false,
+      state: "error",
+      message: "Cancel failed.",
+      meta: error?.message || String(error)
+    });
+    return {
+      ok: false,
+      error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
+      details: error?.message || String(error)
+    };
+  }
+}
+
+async function restorePageOnTab(tabId) {
+  const tab = await chrome.tabs.get(tabId);
+  if (!tab || !isSupportedUrl(tab.url || "")) {
+    return {
+      ok: false,
+      error: C.ERROR_CODES.UNSUPPORTED_TAB,
+      details: "This tab URL cannot be restored."
+    };
+  }
+
   const injected = await ensureContentScript(tabId);
   if (!injected) {
     return {
@@ -222,18 +467,41 @@ async function runAnnotationOnTab(tabId, payload) {
 
   try {
     const response = await chrome.tabs.sendMessage(tabId, {
-      type: C.MESSAGE_TYPES.ANNOTATE_PAGE,
-      payload
+      type: C.MESSAGE_TYPES.RESTORE_PAGE
     });
-    if (!response?.ok) {
-      return {
-        ok: false,
-        error: response?.error || C.ERROR_CODES.INVALID_RESPONSE,
-        details: response?.details || "Annotation failed in content script."
-      };
+    if (response?.ok) {
+      await updateAnnotationStatus(tabId, {
+        running: false,
+        cancelRequested: false,
+        state: "idle",
+        progressPercent: 0,
+        message: "Restored.",
+        meta: response?.details || ""
+      });
+      return response;
     }
-    return response;
+    await updateAnnotationStatus(tabId, {
+      running: false,
+      cancelRequested: false,
+      state: "error",
+      progressPercent: 0,
+      message: "Restore failed.",
+      meta: response?.details || response?.error || ""
+    });
+    return {
+      ok: false,
+      error: response?.error || C.ERROR_CODES.INVALID_RESPONSE,
+      details: response?.details || "Restore failed in content script."
+    };
   } catch (error) {
+    await updateAnnotationStatus(tabId, {
+      running: false,
+      cancelRequested: false,
+      state: "error",
+      progressPercent: 0,
+      message: "Restore failed.",
+      meta: error?.message || String(error)
+    });
     return {
       ok: false,
       error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
