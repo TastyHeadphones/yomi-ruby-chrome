@@ -1,5 +1,7 @@
 # YomiRuby Chrome Extension
 
+![YomiRuby Promo](icons/promo_marquee_1400x560.png)
+
 ## English
 
 ### Project Overview
