@@ -5,6 +5,8 @@ const Japanese = globalThis.YomiRubyJapanese;
 
 const YAHOO_FURIGANA_ENDPOINT = "https://jlp.yahooapis.jp/FuriganaService/V2/furigana";
 const furiganaCache = new Map();
+let nextApiRequestAt = 0;
+let quotaBackoffUntil = 0;
 
 const MOCK_WORD_READINGS = [
   ["日本語", "にほんご"],
@@ -605,6 +607,44 @@ function splitTextForApi(text, maxLength) {
 }
 
 async function requestYahooFurigana(apiKey, text) {
+  const maxAttempts = Math.max(1, C.LIMITS.API_RETRY_MAX_ATTEMPTS || 3);
+  let attempt = 0;
+
+  while (attempt < maxAttempts) {
+    attempt += 1;
+    await waitForApiSlot();
+
+    try {
+      return await requestYahooFuriganaOnce(apiKey, text);
+    } catch (error) {
+      const isQuotaError = error?.code === C.ERROR_CODES.QUOTA_EXCEEDED;
+      const canRetry = attempt < maxAttempts;
+      if (!isQuotaError || !canRetry) {
+        throw error;
+      }
+
+      const baseBackoffMs = C.LIMITS.API_QUOTA_BACKOFF_BASE_MS || 2500;
+      const retryAfterMs =
+        typeof error.retryAfterMs === "number" && Number.isFinite(error.retryAfterMs)
+          ? error.retryAfterMs
+          : baseBackoffMs * attempt;
+      quotaBackoffUntil = Math.max(quotaBackoffUntil, Date.now() + retryAfterMs);
+    }
+  }
+
+  throw new YomiRubyError(C.ERROR_CODES.NETWORK_FAILURE, "Yahoo API retry limit reached.");
+}
+
+async function waitForApiSlot() {
+  const now = Date.now();
+  const waitUntil = Math.max(nextApiRequestAt, quotaBackoffUntil);
+  if (waitUntil > now) {
+    await sleep(waitUntil - now);
+  }
+  nextApiRequestAt = Date.now() + (C.LIMITS.API_MIN_INTERVAL_MS || 260);
+}
+
+async function requestYahooFuriganaOnce(apiKey, text) {
   const requestBody = {
     id: String(Date.now()),
     jsonrpc: "2.0",
@@ -634,7 +674,16 @@ async function requestYahooFurigana(apiKey, text) {
       throw new YomiRubyError(C.ERROR_CODES.INVALID_API_KEY, "Yahoo API key rejected.", response.status);
     }
     if (response.status === 429) {
-      throw new YomiRubyError(C.ERROR_CODES.QUOTA_EXCEEDED, "Yahoo API quota exceeded.", response.status);
+      const retryAfterSeconds = Number(response.headers.get("Retry-After"));
+      const quotaError = new YomiRubyError(
+        C.ERROR_CODES.QUOTA_EXCEEDED,
+        "Yahoo API quota exceeded.",
+        response.status
+      );
+      if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+        quotaError.retryAfterMs = retryAfterSeconds * 1000;
+      }
+      throw quotaError;
     }
     throw new YomiRubyError(
       C.ERROR_CODES.NETWORK_FAILURE,
@@ -678,6 +727,10 @@ async function requestYahooFurigana(apiKey, text) {
     surface: word.surface,
     furigana: Japanese.katakanaToHiragana(word.furigana || "")
   }));
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {
