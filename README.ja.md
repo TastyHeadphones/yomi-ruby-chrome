@@ -2,7 +2,13 @@
 
 ![YomiRuby Promo](icons/promo_marquee_1400x560.png)
 
-[🇬🇧 English](README.en.md) | [🇨🇳 简体中文](README.zh-CN.md) | [🇮🇩 Bahasa Indonesia](README.id.md) | [🇰🇷 한국어](README.ko.md) | [🇹🇭 ไทย](README.th.md) | [🇻🇳 Tiếng Việt](README.vi.md) | [🇲🇲 မြန်မာ](README.my.md) | [🇮🇳 हिन्दी](README.hi.md) | [🇳🇵 नेपाली](README.ne.md) | [🇵🇭 Filipino](README.fil.md) | [🇲🇾 Bahasa Melayu](README.ms.md) | [🇱🇰 සිංහල](README.si.md) | [🇫🇷 Français](README.fr.md) | [🇧🇷 Português (Brasil)](README.pt-BR.md) | [🇯🇵 日本語](README.ja.md)
+<div align="center">
+
+[🇬🇧 English](README.en.md) · [🇨🇳 简体中文](README.zh-CN.md) · [🇮🇩 Bahasa Indonesia](README.id.md) · [🇰🇷 한국어](README.ko.md) · [🇹🇭 ไทย](README.th.md)<br>
+[🇻🇳 Tiếng Việt](README.vi.md) · [🇲🇲 မြန်မာ](README.my.md) · [🇮🇳 हिन्दी](README.hi.md) · [🇳🇵 नेपाली](README.ne.md) · [🇵🇭 Filipino](README.fil.md)<br>
+[🇲🇾 Bahasa Melayu](README.ms.md) · [🇱🇰 සිංහල](README.si.md) · [🇫🇷 Français](README.fr.md) · [🇧🇷 Português (Brasil)](README.pt-BR.md) · [🇯🇵 日本語](README.ja.md)
+
+</div>
 
 ## 概要
 

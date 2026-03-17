@@ -25,25 +25,13 @@
 
 ### Language Switcher
 
-🇬🇧 [English](README.en.md) | 🇨🇳 [简体中文](README.zh-CN.md) | 🇮🇩 [Bahasa Indonesia](README.id.md) | 🇰🇷 [한국어](README.ko.md) | 🇹🇭 [ไทย](README.th.md) | 🇻🇳 [Tiếng Việt](README.vi.md) | 🇲🇲 [မြန်မာ](README.my.md) | 🇮🇳 [हिन्दी](README.hi.md) | 🇳🇵 [नेपाली](README.ne.md) | 🇵🇭 [Filipino](README.fil.md) | 🇲🇾 [Bahasa Melayu](README.ms.md) | 🇱🇰 [සිංහල](README.si.md) | 🇫🇷 [Français](README.fr.md) | 🇧🇷 [Português (Brasil)](README.pt-BR.md) | 🇯🇵 [日本語](README.ja.md)
+<div align="center">
 
-### Top-15 Country Language Coverage
+[🇬🇧 English](README.en.md) · [🇨🇳 简体中文](README.zh-CN.md) · [🇮🇩 Bahasa Indonesia](README.id.md) · [🇰🇷 한국어](README.ko.md) · [🇹🇭 ไทย](README.th.md)<br>
+[🇻🇳 Tiếng Việt](README.vi.md) · [🇲🇲 မြန်မာ](README.my.md) · [🇮🇳 हिन्दी](README.hi.md) · [🇳🇵 नेपाली](README.ne.md) · [🇵🇭 Filipino](README.fil.md)<br>
+[🇲🇾 Bahasa Melayu](README.ms.md) · [🇱🇰 සිංහල](README.si.md) · [🇫🇷 Français](README.fr.md) · [🇧🇷 Português (Brasil)](README.pt-BR.md) · [🇯🇵 日本語](README.ja.md)
 
-- China: [README.zh-CN.md](README.zh-CN.md)
-- Indonesia: [README.id.md](README.id.md)
-- Korea: [README.ko.md](README.ko.md)
-- Australia + United States: [README.en.md](README.en.md)
-- Thailand: [README.th.md](README.th.md)
-- Viet Nam: [README.vi.md](README.vi.md)
-- Taiwan: [README.zh-CN.md](README.zh-CN.md)
-- Myanmar: [README.my.md](README.my.md)
-- India: [README.hi.md](README.hi.md)
-- Nepal (additional): [README.ne.md](README.ne.md)
-- Philippines: [README.fil.md](README.fil.md)
-- Malaysia: [README.ms.md](README.ms.md)
-- Sri Lanka: [README.si.md](README.si.md)
-- France: [README.fr.md](README.fr.md)
-- Brazil: [README.pt-BR.md](README.pt-BR.md)
+</div>
 
 ## Why YomiRuby
 
