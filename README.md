@@ -8,6 +8,8 @@
     ·
     <a href="https://developer.yahoo.co.jp/webapi/jlp/furigana/v2/furigana.html">Yahoo Furigana API</a>
     ·
+    <a href="https://chromewebstore.google.com/detail/yomiruby/hbhhomegemogffhoeaoijibjeapciibk">Chrome Web Store</a>
+    ·
     <a href="PRIVACY_POLICY.md">Privacy Policy</a>
     ·
     <a href="LICENSE">Unlicense</a>
@@ -33,6 +35,12 @@
 
 </div>
 
+## Chrome Web Store
+
+Install from Chrome Web Store:
+
+- <https://chromewebstore.google.com/detail/yomiruby/hbhhomegemogffhoeaoijibjeapciibk>
+
 ## Why YomiRuby
 
 - Annotates visible Japanese text with `<ruby>`, `<rt>`, and `<rp>`.
@@ -42,11 +50,10 @@
 
 ## Quick Start
 
-1. Clone this repository.
-2. Open `chrome://extensions` and enable **Developer mode**.
-3. Click **Load unpacked** and select this project folder.
-4. Open extension **Settings**, configure API key, and run **Test API Key**.
-5. Open a Japanese page and click **Run Annotation Now**.
+1. Install from Chrome Web Store (link above).
+2. Open extension **Settings**, configure API key, and run **Test API Key**.
+3. Open a Japanese page and click **Run Annotation Now**.
+4. For local development, use `chrome://extensions` -> **Developer mode** -> **Load unpacked**.
 
 ## Repository Layout
 

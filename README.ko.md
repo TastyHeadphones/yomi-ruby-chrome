@@ -10,6 +10,10 @@
 
 </div>
 
+## Chrome Web Store
+
+- <https://chromewebstore.google.com/detail/yomiruby/hbhhomegemogffhoeaoijibjeapciibk>
+
 ## 개요
 
 YomiRuby는 일본어 웹페이지의 한자에 후리가나를 추가하는 Manifest V3 기반 크롬 확장입니다. HTML ruby 태그(`ruby`, `rt`, `rp`)를 사용해 의미 있는 마크업으로 주석을 표시합니다.

@@ -10,6 +10,10 @@
 
 </div>
 
+## Chrome Web Store
+
+- <https://chromewebstore.google.com/detail/yomiruby/hbhhomegemogffhoeaoijibjeapciibk>
+
 ## Tổng quan
 
 YomiRuby là tiện ích Chrome Manifest V3 sẵn sàng cho production, dùng để thêm furigana cho kanji tiếng Nhật bằng thẻ HTML ruby (`ruby`, `rt`, `rp`).

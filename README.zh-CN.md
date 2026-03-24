@@ -10,6 +10,10 @@
 
 </div>
 
+## Chrome Web Store
+
+- <https://chromewebstore.google.com/detail/yomiruby/hbhhomegemogffhoeaoijibjeapciibk>
+
 ## 概述
 
 YomiRuby 是一个生产可用的 Manifest V3 Chrome 扩展，可使用 HTML 语义化 ruby 标签（`<ruby>`, `<rt>`, `<rp>`）为网页日文汉字添加振假名。

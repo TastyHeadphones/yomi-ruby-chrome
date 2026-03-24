@@ -10,6 +10,10 @@
 
 </div>
 
+## Chrome Web Store
+
+- <https://chromewebstore.google.com/detail/yomiruby/hbhhomegemogffhoeaoijibjeapciibk>
+
 ## 概要
 
 YomiRuby は、Web ページ上の日本語漢字にふりがなを付与する Manifest V3 対応 Chrome 拡張です。HTML のセマンティックな ruby タグ（`<ruby>`, `<rt>`, `<rp>`）を使用します。

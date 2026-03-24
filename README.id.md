@@ -10,6 +10,10 @@
 
 </div>
 
+## Chrome Web Store
+
+- <https://chromewebstore.google.com/detail/yomiruby/hbhhomegemogffhoeaoijibjeapciibk>
+
 ## Ringkasan
 
 YomiRuby adalah ekstensi Chrome Manifest V3 siap produksi untuk menambahkan furigana pada teks Jepang menggunakan tag HTML ruby (`<ruby>`, `<rt>`, `<rp>`).

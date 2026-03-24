@@ -10,6 +10,10 @@
 
 </div>
 
+## Chrome Web Store
+
+- <https://chromewebstore.google.com/detail/yomiruby/hbhhomegemogffhoeaoijibjeapciibk>
+
 ## සාරාංශය
 
 YomiRuby යනු production-ready Manifest V3 Chrome extension එකක් වන අතර, Japanese kanji සඳහා furigana එක් කිරීමට HTML ruby tags (`<ruby>`, `<rt>`, `<rp>`) භාවිතා කරයි.

@@ -10,6 +10,10 @@
 
 </div>
 
+## Chrome Web Store
+
+- <https://chromewebstore.google.com/detail/yomiruby/hbhhomegemogffhoeaoijibjeapciibk>
+
 ## ภาพรวม
 
 YomiRuby คือส่วนขยาย Chrome แบบ Manifest V3 ที่พร้อมใช้งานจริงสำหรับใส่ฟุริงานะให้คันจิภาษาญี่ปุ่นบนเว็บ โดยใช้แท็ก HTML ruby (`ruby`, `rt`, `rp`).

@@ -1,4 +1,4 @@
-# YomiRuby (English, 🇦🇺/Global)
+# YomiRuby (English, 🇬🇧)
 
 ![YomiRuby Promo](icons/promo_marquee_1400x560.png)
 
@@ -9,6 +9,12 @@
 [🇲🇾 Bahasa Melayu](README.ms.md) · [🇱🇰 සිංහල](README.si.md) · [🇫🇷 Français](README.fr.md) · [🇧🇷 Português (Brasil)](README.pt-BR.md) · [🇯🇵 日本語](README.ja.md)
 
 </div>
+
+## Chrome Web Store
+
+Install from Chrome Web Store:
+
+- <https://chromewebstore.google.com/detail/yomiruby/hbhhomegemogffhoeaoijibjeapciibk>
 
 ## Overview
 
@@ -26,12 +32,10 @@ YomiRuby is a production-ready Manifest V3 Chrome extension that annotates Japan
 
 ## Quick Start
 
-1. Clone this repository.
-2. Open `chrome://extensions`.
-3. Enable **Developer mode**.
-4. Click **Load unpacked** and select this folder.
-5. Open extension **Settings**, set API key, click **Test API Key**, then **Save Settings**.
-6. Visit a Japanese page and click **Run Annotation Now**.
+1. Install from Chrome Web Store (link above).
+2. Open extension **Settings**, set API key, click **Test API Key**, then **Save Settings**.
+3. Visit a Japanese page and click **Run Annotation Now**.
+4. For local development, open `chrome://extensions`, enable **Developer mode**, then **Load unpacked**.
 
 ## API Key Setup
 
