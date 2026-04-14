@@ -14,7 +14,7 @@ let nextApiRequestAt = 0;
 let quotaBackoffUntil = 0;
 let localDictionaryPromise = null;
 
-const MOCK_WORD_READINGS = [
+const FALLBACK_WORD_READINGS = [
   ["日本語", "にほんご"],
   ["東京都", "とうきょうと"],
   ["日本人", "にほんじん"],
@@ -1137,26 +1137,18 @@ function flattenYahooWords(words, target = []) {
 }
 
 async function createLocalDictionaryTokens(text) {
-  const sortedDictionary = await getLocalDictionaryEntries();
-  return buildDictionaryTokens(text, sortedDictionary, MOCK_CHAR_READINGS);
+  const dictionaryIndex = await getLocalDictionaryIndex();
+  return buildDictionaryTokens(text, dictionaryIndex, MOCK_CHAR_READINGS);
 }
 
-async function getLocalDictionaryEntries() {
+async function getLocalDictionaryIndex() {
   if (!localDictionaryPromise) {
-    localDictionaryPromise = loadLocalDictionaryEntries();
+    localDictionaryPromise = loadLocalDictionaryIndex();
   }
   return localDictionaryPromise;
 }
 
-async function loadLocalDictionaryEntries() {
-  const mergedEntries = new Map();
-
-  for (const [surface, reading] of MOCK_WORD_READINGS) {
-    if (surface) {
-      mergedEntries.set(surface, reading);
-    }
-  }
-
+async function loadLocalDictionaryIndex() {
   try {
     const response = await fetch(chrome.runtime.getURL(C.ASSETS.LOCAL_DICTIONARY));
     if (!response.ok) {
@@ -1164,17 +1156,12 @@ async function loadLocalDictionaryEntries() {
     }
 
     const payload = await response.json();
-    const entries = normalizeLocalDictionaryPayload(payload);
-    for (const entry of entries) {
-      if (entry.surface) {
-        mergedEntries.set(entry.surface, entry.reading);
-      }
-    }
+    return buildDictionaryIndex(normalizeLocalDictionaryPayload(payload));
   } catch (error) {
     console.warn("YomiRuby local dictionary load failed:", error);
   }
 
-  return [...mergedEntries.entries()].sort((a, b) => b[0].length - a[0].length);
+  return buildDictionaryIndex([]);
 }
 
 function normalizeLocalDictionaryPayload(payload) {
@@ -1197,15 +1184,15 @@ function normalizeLocalDictionaryPayload(payload) {
         reading: typeof entry?.reading === "string" ? entry.reading.trim() : ""
       };
     })
-    .filter((entry) => entry.surface.length > 0);
+    .filter((entry) => entry.surface.length > 0 && entry.reading.length > 0 && Japanese.containsKanji(entry.surface));
 }
 
-function buildDictionaryTokens(text, sortedDictionary, characterReadings) {
+function buildDictionaryTokens(text, dictionaryIndex, characterReadings) {
   const tokens = [];
   let index = 0;
 
   while (index < text.length) {
-    const longestWord = findLongestDictionaryEntry(text, index, sortedDictionary);
+    const longestWord = findLongestDictionaryEntry(text, index, dictionaryIndex);
     if (longestWord) {
       tokens.push({ surface: longestWord.surface, furigana: longestWord.reading });
       index += longestWord.surface.length;
@@ -1225,7 +1212,7 @@ function buildDictionaryTokens(text, sortedDictionary, characterReadings) {
     const start = index;
     index += 1;
     while (index < text.length) {
-      const hasWordMatch = findLongestDictionaryEntry(text, index, sortedDictionary);
+      const hasWordMatch = findLongestDictionaryEntry(text, index, dictionaryIndex);
       const isKanji = Japanese.isKanji(text[index]);
       if (hasWordMatch || isKanji) {
         break;
@@ -1238,13 +1225,68 @@ function buildDictionaryTokens(text, sortedDictionary, characterReadings) {
   return mergePlainTokens(tokens);
 }
 
-function findLongestDictionaryEntry(text, startIndex, sortedDictionary) {
-  for (const [surface, reading] of sortedDictionary) {
-    if (text.startsWith(surface, startIndex)) {
-      return { surface, reading };
+function buildDictionaryIndex(entries) {
+  const root = createDictionaryNode();
+  const seenSurfaces = new Set();
+
+  for (const entry of entries) {
+    insertDictionaryEntry(root, entry.surface, entry.reading);
+    seenSurfaces.add(entry.surface);
+  }
+
+  for (const [surface, reading] of FALLBACK_WORD_READINGS) {
+    if (surface && reading && !seenSurfaces.has(surface)) {
+      insertDictionaryEntry(root, surface, reading);
     }
   }
-  return null;
+
+  return root;
+}
+
+function createDictionaryNode() {
+  return {
+    children: Object.create(null),
+    matches: []
+  };
+}
+
+function insertDictionaryEntry(root, surface, reading) {
+  if (!surface || !reading) {
+    return;
+  }
+
+  let node = root;
+  for (const char of surface) {
+    if (!node.children[char]) {
+      node.children[char] = createDictionaryNode();
+    }
+    node = node.children[char];
+  }
+
+  if (!node.matches.some((match) => match.reading === reading)) {
+    node.matches.push({
+      surface,
+      reading
+    });
+  }
+}
+
+function findLongestDictionaryEntry(text, startIndex, dictionaryIndex) {
+  let node = dictionaryIndex;
+  let bestMatch = null;
+
+  for (let cursor = startIndex; cursor < text.length; cursor += 1) {
+    const char = text[cursor];
+    node = node?.children?.[char];
+    if (!node) {
+      break;
+    }
+    if (node.matches.length > 0) {
+      bestMatch = node.matches[0];
+    }
+  }
+
+  return bestMatch;
 }
 
 function mergePlainTokens(tokens) {
