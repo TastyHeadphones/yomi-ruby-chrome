@@ -7,9 +7,9 @@
   const developerPortalLink = document.getElementById("developerPortalLink");
   const clientIdLabel = document.getElementById("clientIdLabel");
   const clientIdInput = document.getElementById("apiKeyInput");
-  const offlineModeCheckbox = document.getElementById("demoModeCheckbox");
-  const offlineModeLabel = document.getElementById("offlineModeLabel");
-  const offlineModeHelp = document.getElementById("offlineModeHelp");
+  const annotationModeLabel = document.getElementById("annotationModeLabel");
+  const annotationModeSelect = document.getElementById("annotationModeSelect");
+  const annotationModeHelp = document.getElementById("annotationModeHelp");
   const testButton = document.getElementById("testButton");
   const saveButton = document.getElementById("saveButton");
   const howToTitle = document.getElementById("howToTitle");
@@ -55,8 +55,16 @@
     developerPortalLink.textContent = "Yahoo! JAPAN Developer Network";
     clientIdLabel.textContent = t("options_client_id_label");
     clientIdInput.placeholder = t("options_client_id_placeholder");
-    offlineModeLabel.textContent = t("options_offline_mode_label");
-    offlineModeHelp.textContent = t("options_offline_mode_help");
+    annotationModeLabel.textContent = t("options_annotation_mode_label");
+    annotationModeHelp.textContent = t("options_annotation_mode_help");
+    const localOption = annotationModeSelect.querySelector("option[value='local_dict']");
+    const yahooOption = annotationModeSelect.querySelector("option[value='yahoo_api']");
+    if (yahooOption) {
+      yahooOption.textContent = t("options_mode_yahoo_api");
+    }
+    if (localOption) {
+      localOption.textContent = t("options_mode_local_dict");
+    }
     testButton.textContent = t("options_test_client_id");
     saveButton.textContent = t("options_save_settings");
     howToTitle.textContent = t("options_how_to_get_client_id");
@@ -70,6 +78,7 @@
   async function loadSettings() {
     const values = await chrome.storage.sync.get([
       C.STORAGE_KEYS.YAHOO_CLIENT_ID,
+      C.STORAGE_KEYS.ANNOTATION_ENGINE,
       C.STORAGE_KEYS.OFFLINE_MODE_ENABLED,
       C.STORAGE_KEYS.LEGACY_API_KEY,
       C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED
@@ -79,20 +88,31 @@
         values[C.STORAGE_KEYS.LEGACY_API_KEY] ||
         ""
     );
-    const offlineModeEnabled =
-      typeof values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] === "boolean"
-        ? values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED]
-        : typeof values[C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED] === "boolean"
-          ? values[C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED]
-          : C.DEFAULTS.OFFLINE_MODE_ENABLED;
+    const storedEngine = String(values[C.STORAGE_KEYS.ANNOTATION_ENGINE] || "").trim();
+    const annotationEngine =
+      storedEngine === C.ANNOTATION_ENGINES.YAHOO_API ||
+      storedEngine === C.ANNOTATION_ENGINES.LOCAL_DICT
+        ? storedEngine
+        : typeof values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] === "boolean"
+          ? values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED]
+            ? C.ANNOTATION_ENGINES.LOCAL_DICT
+            : C.ANNOTATION_ENGINES.YAHOO_API
+          : typeof values[C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED] === "boolean"
+            ? values[C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED]
+              ? C.ANNOTATION_ENGINES.LOCAL_DICT
+              : C.ANNOTATION_ENGINES.YAHOO_API
+            : C.DEFAULTS.ANNOTATION_ENGINE;
 
     clientIdInput.value = clientId;
-    offlineModeCheckbox.checked = offlineModeEnabled;
+    annotationModeSelect.value = annotationEngine;
   }
 
   async function saveSettings() {
     const clientId = clientIdInput.value.trim();
-    const offlineModeEnabled = offlineModeCheckbox.checked;
+    const annotationEngine =
+      annotationModeSelect.value === C.ANNOTATION_ENGINES.YAHOO_API
+        ? C.ANNOTATION_ENGINES.YAHOO_API
+        : C.ANNOTATION_ENGINES.LOCAL_DICT;
 
     const validation = validateClientId(clientId);
     if (!validation.valid) {
@@ -100,14 +120,15 @@
       return;
     }
 
-    if (!clientId && !offlineModeEnabled) {
-      setFeedback(t("options_provide_client_id_or_enable_offline"), true);
+    if (annotationEngine === C.ANNOTATION_ENGINES.YAHOO_API && !clientId) {
+      setFeedback(t("options_provide_client_id_for_yahoo_mode"), true);
       return;
     }
 
     await chrome.storage.sync.set({
       [C.STORAGE_KEYS.YAHOO_CLIENT_ID]: clientId,
-      [C.STORAGE_KEYS.OFFLINE_MODE_ENABLED]: offlineModeEnabled
+      [C.STORAGE_KEYS.ANNOTATION_ENGINE]: annotationEngine,
+      [C.STORAGE_KEYS.OFFLINE_MODE_ENABLED]: annotationEngine === C.ANNOTATION_ENGINES.LOCAL_DICT
     });
 
     setFeedback(t("options_settings_saved"));

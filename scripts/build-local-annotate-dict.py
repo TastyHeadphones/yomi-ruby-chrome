@@ -1,109 +1,79 @@
 #!/usr/bin/env python3
-"""Build the offline annotation dictionary from the official JMdict feed."""
+"""Build the offline annotation dictionary from full MeCab IPADIC CSV data."""
 
 from __future__ import annotations
 
 import argparse
-import gzip
+import csv
+import io
 import json
+import shutil
 import sys
+import tarfile
+import tempfile
 import urllib.request
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
-DEFAULT_SOURCE_URL = "http://ftp.edrdg.org/pub/Nihongo/JMdict.gz"
-
-
-def contains_kanji(text: str) -> bool:
-    return bool(text) and any("\u4e00" <= char <= "\u9faf" or char in "々〆ヵヶ" for char in text)
+DEFAULT_SOURCE_URL = (
+    "https://sourceforge.net/projects/mecab/files/mecab-ipadic/2.7.0-20070801/"
+    "mecab-ipadic-2.7.0-20070801.tar.gz/download"
+)
 
 
 def katakana_to_hiragana(text: str) -> str:
     return "".join(chr(ord(char) - 0x60) if "ァ" <= char <= "ヶ" else char for char in text)
 
 
-def open_source_stream(source: str | Path):
+def resolve_source_path(source: str) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
     source_text = str(source)
-    if source_text.startswith(("http://", "https://")):
-        response = urllib.request.urlopen(source_text)
-        return gzip.GzipFile(fileobj=response)
-    return gzip.open(source_text, "rb")
+    if not source_text.startswith(("http://", "https://")):
+        return Path(source_text), None
+
+    tempdir = tempfile.TemporaryDirectory(prefix="yomiruby-ipadic-")
+    archive_path = Path(tempdir.name) / "ipadic.tar.gz"
+    with urllib.request.urlopen(source_text) as response, archive_path.open("wb") as output:
+        shutil.copyfileobj(response, output)
+    return archive_path, tempdir
 
 
-def get_child_text(parent: ET.Element, tag: str) -> str:
-    child = parent.find(tag)
-    if child is None or child.text is None:
-        return ""
-    return child.text.strip()
-
-
-def extract_entry_pairs(entry: ET.Element) -> list[list[str]]:
-    kanji_forms: list[str] = []
-    seen_forms: set[str] = set()
-
-    for k_ele in entry.findall("k_ele"):
-        keb = get_child_text(k_ele, "keb")
-        if keb and keb not in seen_forms and contains_kanji(keb):
-            seen_forms.add(keb)
-            kanji_forms.append(keb)
-
-    if not kanji_forms:
-        return []
-
-    pairs: list[list[str]] = []
-    seen_pairs: set[tuple[str, str]] = set()
-
-    for r_ele in entry.findall("r_ele"):
-        if r_ele.find("re_nokanji") is not None:
-            continue
-
-        reading = katakana_to_hiragana(get_child_text(r_ele, "reb"))
-        if not reading:
-            continue
-
-        restrictions = {
-            item.text.strip()
-            for item in r_ele.findall("re_restr")
-            if item.text and item.text.strip()
-        }
-        candidate_forms = (
-            [surface for surface in kanji_forms if surface in restrictions]
-            if restrictions
-            else kanji_forms
-        )
-
-        for surface in candidate_forms:
-            key = (surface, reading)
-            if key in seen_pairs:
+def iter_ipadic_rows(archive_path: Path):
+    with tarfile.open(archive_path, "r:gz") as archive:
+        for member in archive.getmembers():
+            if not member.isfile() or not member.name.endswith(".csv"):
                 continue
-            seen_pairs.add(key)
-            pairs.append([surface, reading])
-
-    return pairs
-
-
-def build_entries(source: str | Path) -> tuple[int, list[list[str]]]:
-    entries: list[list[str]] = []
-    seen_pairs: set[tuple[str, str]] = set()
-    entry_count = 0
-
-    with open_source_stream(source) as raw_stream:
-        for event, element in ET.iterparse(raw_stream, events=("end",)):
-            if element.tag != "entry":
+            handle = archive.extractfile(member)
+            if handle is None:
                 continue
-
-            entry_count += 1
-            for surface, reading in extract_entry_pairs(element):
-                key = (surface, reading)
-                if key in seen_pairs:
+            text_stream = io.TextIOWrapper(handle, encoding="euc-jp", errors="ignore", newline="")
+            reader = csv.reader(text_stream)
+            for row in reader:
+                if len(row) < 12:
                     continue
-                seen_pairs.add(key)
-                entries.append([surface, reading])
+                yield row
 
-            element.clear()
 
-    return entry_count, entries
+def build_entries(source: str) -> tuple[int, list[list[str]]]:
+    archive_path, tempdir = resolve_source_path(source)
+    row_count = 0
+    entries: list[list[str]] = []
+
+    try:
+        for row in iter_ipadic_rows(archive_path):
+            surface = row[0].strip()
+            reading = row[11].strip()
+            if not surface or not reading or reading == "*":
+                continue
+
+            normalized = [column.strip() for column in row]
+            normalized[11] = katakana_to_hiragana(reading)
+            entries.append(normalized)
+            row_count += 1
+    finally:
+        if tempdir is not None:
+            tempdir.cleanup()
+
+    return row_count, entries
 
 
 def parse_args() -> argparse.Namespace:
@@ -111,7 +81,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--source",
         default=DEFAULT_SOURCE_URL,
-        help="JMdict gzip source URL or local file path",
+        help="IPADIC .tar.gz source URL or local file path",
     )
     parser.add_argument(
         "--output",
@@ -124,14 +94,14 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    entry_count, entries = build_entries(args.source)
+    row_count, entries = build_entries(args.source)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as handle:
         json.dump(entries, handle, ensure_ascii=False, separators=(",", ":"))
 
     print(
-        f"Wrote {len(entries)} dictionary pairs from {entry_count} JMdict entries to {args.output}.",
+        f"Wrote {len(entries)} entries from {row_count} IPADIC rows to {args.output}.",
         file=sys.stderr,
     )
     return 0

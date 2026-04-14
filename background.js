@@ -242,6 +242,7 @@ async function handleMessage(message, sender) {
 async function initializeDefaults() {
   const values = await chrome.storage.sync.get([
     C.STORAGE_KEYS.YAHOO_CLIENT_ID,
+    C.STORAGE_KEYS.ANNOTATION_ENGINE,
     C.STORAGE_KEYS.OFFLINE_MODE_ENABLED,
     C.STORAGE_KEYS.ENABLED_GLOBALLY
   ]);
@@ -265,6 +266,20 @@ async function initializeDefaults() {
 
   if (typeof values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] !== "boolean" && typeof nextValues[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] !== "boolean") {
     nextValues[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] = C.DEFAULTS.OFFLINE_MODE_ENABLED;
+  }
+
+  const currentEngine = values[C.STORAGE_KEYS.ANNOTATION_ENGINE];
+  if (
+    currentEngine !== C.ANNOTATION_ENGINES.YAHOO_API &&
+    currentEngine !== C.ANNOTATION_ENGINES.LOCAL_DICT
+  ) {
+    const resolvedOfflineMode =
+      typeof nextValues[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] === "boolean"
+        ? nextValues[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED]
+        : values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED];
+    nextValues[C.STORAGE_KEYS.ANNOTATION_ENGINE] = resolvedOfflineMode
+      ? C.ANNOTATION_ENGINES.LOCAL_DICT
+      : C.ANNOTATION_ENGINES.YAHOO_API;
   }
 
   if (typeof values[C.STORAGE_KEYS.ENABLED_GLOBALLY] !== "boolean") {
@@ -395,7 +410,7 @@ async function runAnnotationOnTab(tabId, payload) {
       type: C.MESSAGE_TYPES.ANNOTATE_PAGE,
       payload: {
         ...payload,
-        offlineModeEnabled: settings.offlineModeEnabled
+        annotationEngine: settings.annotationEngine
       }
     });
     if (!response?.ok) {
@@ -633,22 +648,34 @@ async function ensureContentScript(tabId) {
 async function getSettings() {
   const values = await chrome.storage.sync.get([
     C.STORAGE_KEYS.YAHOO_CLIENT_ID,
+    C.STORAGE_KEYS.ANNOTATION_ENGINE,
     C.STORAGE_KEYS.OFFLINE_MODE_ENABLED,
     C.STORAGE_KEYS.LEGACY_API_KEY,
     C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED
   ]);
+  const storedEngine = String(values[C.STORAGE_KEYS.ANNOTATION_ENGINE] || "").trim();
+  let annotationEngine = storedEngine;
+  if (
+    annotationEngine !== C.ANNOTATION_ENGINES.YAHOO_API &&
+    annotationEngine !== C.ANNOTATION_ENGINES.LOCAL_DICT
+  ) {
+    const offlineModeEnabled =
+      typeof values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] === "boolean"
+        ? values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED]
+        : typeof values[C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED] === "boolean"
+          ? values[C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED]
+          : C.DEFAULTS.OFFLINE_MODE_ENABLED;
+    annotationEngine = offlineModeEnabled
+      ? C.ANNOTATION_ENGINES.LOCAL_DICT
+      : C.ANNOTATION_ENGINES.YAHOO_API;
+  }
   return {
     clientId: String(
       values[C.STORAGE_KEYS.YAHOO_CLIENT_ID] ||
         values[C.STORAGE_KEYS.LEGACY_API_KEY] ||
         ""
     ).trim(),
-    offlineModeEnabled:
-      typeof values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] === "boolean"
-        ? values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED]
-        : typeof values[C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED] === "boolean"
-          ? values[C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED]
-          : C.DEFAULTS.OFFLINE_MODE_ENABLED
+    annotationEngine
   };
 }
 
@@ -699,11 +726,11 @@ async function annotateTextBatch(texts) {
   }
 
   const settings = await getSettings();
-  if (!settings.offlineModeEnabled && !settings.clientId) {
+  if (settings.annotationEngine === C.ANNOTATION_ENGINES.YAHOO_API && !settings.clientId) {
     return {
       ok: false,
       error: C.ERROR_CODES.MISSING_CLIENT_ID,
-      details: t("options_provide_client_id_or_enable_offline")
+      details: t("options_provide_client_id_for_yahoo_mode")
     };
   }
 
@@ -780,7 +807,7 @@ async function annotateSingleText(text, settings) {
             mergedTokens.push({ surface: chunk, furigana: "" });
             continue;
           }
-          if (settings.clientId && !settings.offlineModeEnabled) {
+          if (settings.annotationEngine === C.ANNOTATION_ENGINES.YAHOO_API) {
             return {
               text,
               tokens: [{ surface: text, furigana: "" }],
@@ -887,17 +914,16 @@ function isInvalidParamsError(error) {
 }
 
 async function getFuriganaTokensForChunk(text, settings) {
-  const cacheMode = settings.offlineModeEnabled ? "local" : "api";
-  const cacheKey = `${cacheMode}:${text}`;
+  const cacheKey = `${settings.annotationEngine}:${text}`;
   if (furiganaCache.has(cacheKey)) {
     return furiganaCache.get(cacheKey);
   }
 
   let tokens = [];
-  if (settings.offlineModeEnabled) {
-    tokens = await createLocalDictionaryTokens(text);
-  } else {
+  if (settings.annotationEngine === C.ANNOTATION_ENGINES.YAHOO_API) {
     tokens = await requestYahooFurigana(settings.clientId, text);
+  } else {
+    tokens = await createLocalDictionaryTokens(text);
   }
 
   const normalizedTokens = normalizeTokensForText(tokens, text);
@@ -1174,9 +1200,10 @@ function normalizeLocalDictionaryPayload(payload) {
   return rawEntries
     .map((entry) => {
       if (Array.isArray(entry)) {
+        const readingIndex = entry.length > 11 ? 11 : 1;
         return {
           surface: typeof entry[0] === "string" ? entry[0].trim() : "",
-          reading: typeof entry[1] === "string" ? entry[1].trim() : ""
+          reading: typeof entry[readingIndex] === "string" ? entry[readingIndex].trim() : ""
         };
       }
       return {
@@ -1184,7 +1211,13 @@ function normalizeLocalDictionaryPayload(payload) {
         reading: typeof entry?.reading === "string" ? entry.reading.trim() : ""
       };
     })
-    .filter((entry) => entry.surface.length > 0 && entry.reading.length > 0 && Japanese.containsKanji(entry.surface));
+    .filter(
+      (entry) =>
+        entry.surface.length > 0 &&
+        entry.reading.length > 0 &&
+        entry.reading !== "*" &&
+        Japanese.containsKanji(entry.surface)
+    );
 }
 
 function buildDictionaryTokens(text, dictionaryIndex, characterReadings) {

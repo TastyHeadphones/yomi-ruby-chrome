@@ -350,7 +350,8 @@
     cancelRequested = false;
     clearProgressCleanupTimer();
     ensureAnnotationStyle();
-    const offlineModeEnabled = Boolean(options.offlineModeEnabled);
+    const annotationEngine = String(options.annotationEngine || "");
+    const localDictMode = annotationEngine === C.ANNOTATION_ENGINES.LOCAL_DICT;
 
     try {
       const root = document.body || document.documentElement;
@@ -436,7 +437,7 @@
           t("content_updating_page")
         );
 
-        if (!offlineModeEnabled && C.LIMITS.PARAGRAPH_DELAY_MS > 0) {
+        if (!localDictMode && C.LIMITS.PARAGRAPH_DELAY_MS > 0) {
           await new Promise((resolve) => setTimeout(resolve, C.LIMITS.PARAGRAPH_DELAY_MS));
         }
       }

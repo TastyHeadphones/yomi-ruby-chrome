@@ -30,11 +30,12 @@
         autocomplete="off"
       >
 
-      <label for="demoModeCheckbox" class="checkbox-row">
-        <input id="demoModeCheckbox" type="checkbox">
-        <span id="offlineModeLabel">Offline mode (use local dictionary)</span>
-      </label>
-      <p class="description" id="offlineModeHelp"></p>
+      <label for="annotationModeSelect" class="field-label" id="annotationModeLabel">Annotation mode</label>
+      <select id="annotationModeSelect">
+        <option value="yahoo_api">Yahoo API (Client ID required)</option>
+        <option value="local_dict">Local dictionary (offline)</option>
+      </select>
+      <p class="description" id="annotationModeHelp"></p>
 
       <div class="button-row">
         <button id="testButton" type="button" class="secondary">Test Client ID</button>

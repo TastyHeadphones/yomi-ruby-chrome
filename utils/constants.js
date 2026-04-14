@@ -4,6 +4,7 @@
     STORAGE_KEYS: {
       YAHOO_CLIENT_ID: "yomirubyYahooClientId",
       API_KEY: "yomirubyYahooClientId",
+      ANNOTATION_ENGINE: "yomirubyAnnotationEngine",
       OFFLINE_MODE_ENABLED: "yomirubyOfflineModeEnabled",
       DEMO_MODE_ENABLED: "yomirubyOfflineModeEnabled",
       LEGACY_API_KEY: "yomirubyYahooApiKey",
@@ -58,8 +59,13 @@
       FURIGANA_CACHE_SIZE: 500
     },
     DEFAULTS: {
+      ANNOTATION_ENGINE: "local_dict",
       OFFLINE_MODE_ENABLED: true,
       ENABLED_GLOBALLY: false
+    },
+    ANNOTATION_ENGINES: {
+      YAHOO_API: "yahoo_api",
+      LOCAL_DICT: "local_dict"
     },
     ASSETS: {
       LOCAL_DICTIONARY: "data/local-annotate-dict.json"
