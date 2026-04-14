@@ -114,15 +114,17 @@
         ? C.ANNOTATION_ENGINES.YAHOO_API
         : C.ANNOTATION_ENGINES.LOCAL_DICT;
 
-    const validation = validateClientId(clientId);
-    if (!validation.valid) {
-      setFeedback(validation.message || t("options_client_id_test_failed"), true);
-      return;
-    }
+    if (annotationEngine === C.ANNOTATION_ENGINES.YAHOO_API) {
+      const validation = validateClientId(clientId);
+      if (!validation.valid) {
+        setFeedback(validation.message || t("options_client_id_test_failed"), true);
+        return;
+      }
 
-    if (annotationEngine === C.ANNOTATION_ENGINES.YAHOO_API && !clientId) {
-      setFeedback(t("options_provide_client_id_for_yahoo_mode"), true);
-      return;
+      if (!clientId) {
+        setFeedback(t("options_provide_client_id_for_yahoo_mode"), true);
+        return;
+      }
     }
 
     await chrome.storage.sync.set({
