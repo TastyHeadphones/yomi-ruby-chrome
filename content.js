@@ -346,6 +346,9 @@
       return { ok: false, error: "busy", details: t("content_annotation_already_running") };
     }
 
+    if (typeof I18N?.init === "function") {
+      await I18N.init();
+    }
     annotationInProgress = true;
     cancelRequested = false;
     clearProgressCleanupTimer();

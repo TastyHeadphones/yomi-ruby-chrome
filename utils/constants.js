@@ -5,6 +5,7 @@
       YAHOO_CLIENT_ID: "yomirubyYahooClientId",
       API_KEY: "yomirubyYahooClientId",
       ANNOTATION_ENGINE: "yomirubyAnnotationEngine",
+      UI_LOCALE: "yomirubyUiLocale",
       OFFLINE_MODE_ENABLED: "yomirubyOfflineModeEnabled",
       DEMO_MODE_ENABLED: "yomirubyOfflineModeEnabled",
       LEGACY_API_KEY: "yomirubyYahooApiKey",
@@ -60,6 +61,7 @@
     },
     DEFAULTS: {
       ANNOTATION_ENGINE: "local_dict",
+      UI_LOCALE: "auto",
       OFFLINE_MODE_ENABLED: true,
       ENABLED_GLOBALLY: false
     },

@@ -31,6 +31,9 @@
       options_description: "Choose an annotation engine: Yahoo API or local dictionary.",
       options_client_id_label: "Yahoo Client ID",
       options_client_id_placeholder: "Paste your Yahoo Client ID",
+      options_ui_language_label: "UI language",
+      options_ui_language_help: "Select the extension UI language. Auto follows your browser language.",
+      options_ui_language_auto: "Auto (browser language)",
       options_annotation_mode_label: "Annotation mode",
       options_annotation_mode_help: "Yahoo API uses your Client ID. Local dictionary runs fully offline.",
       options_mode_yahoo_api: "Yahoo API (Client ID required)",
@@ -104,6 +107,9 @@
       options_description: "注釈エンジンを選択します。Yahoo API またはローカル辞書を使用できます。",
       options_client_id_label: "Yahoo Client ID",
       options_client_id_placeholder: "Yahoo Client ID を貼り付け",
+      options_ui_language_label: "表示言語",
+      options_ui_language_help: "拡張機能の表示言語を選択します。自動はブラウザ言語に従います。",
+      options_ui_language_auto: "自動（ブラウザ言語）",
       options_annotation_mode_label: "注釈モード",
       options_annotation_mode_help: "Yahoo API は Client ID を使用します。ローカル辞書は完全オフラインで動作します。",
       options_mode_yahoo_api: "Yahoo API（Client ID 必須）",
@@ -513,6 +519,107 @@
     }
   };
 
+  const SUPPORTED_LOCALES = Object.freeze([
+    { code: "auto", label: "Auto" },
+    { code: "en", label: "English" },
+    { code: "ja", label: "日本語" },
+    { code: "zh-CN", label: "简体中文" },
+    { code: "ko", label: "한국어" },
+    { code: "th", label: "ไทย" },
+    { code: "vi", label: "Tiếng Việt" },
+    { code: "id", label: "Bahasa Indonesia" },
+    { code: "fr", label: "Français" },
+    { code: "pt-BR", label: "Português (Brasil)" },
+    { code: "hi", label: "हिन्दी" },
+    { code: "ms", label: "Bahasa Melayu" },
+    { code: "fil", label: "Filipino" },
+    { code: "my", label: "မြန်မာဘာသာ" },
+    { code: "ne", label: "नेपाली" },
+    { code: "si", label: "සිංහල" }
+  ]);
+
+  const SUPPORTED_LOCALE_CODES = new Set(SUPPORTED_LOCALES.map((entry) => entry.code));
+  const LOCALE_BY_LOWER = new Map(
+    SUPPORTED_LOCALES
+      .filter((entry) => entry.code !== "auto")
+      .map((entry) => [entry.code.toLowerCase(), entry.code])
+  );
+  const STORAGE_UI_LOCALE_KEY =
+    globalThis.YomiRubyConstants?.STORAGE_KEYS?.UI_LOCALE || "yomirubyUiLocale";
+
+  let localePreference = "auto";
+  let activeLocale = "en";
+  let initInFlight = null;
+
+  function normalizeLocale(locale) {
+    const value = String(locale || "").trim().replace("_", "-");
+    if (!value) {
+      return "en";
+    }
+
+    const lower = value.toLowerCase();
+    const direct = LOCALE_BY_LOWER.get(lower);
+    if (direct) {
+      return direct;
+    }
+
+    if (lower.startsWith("ja")) {
+      return "ja";
+    }
+    if (lower.startsWith("zh")) {
+      return "zh-CN";
+    }
+    if (lower.startsWith("ko")) {
+      return "ko";
+    }
+    if (lower.startsWith("th")) {
+      return "th";
+    }
+    if (lower.startsWith("vi")) {
+      return "vi";
+    }
+    if (lower.startsWith("id")) {
+      return "id";
+    }
+    if (lower.startsWith("fr")) {
+      return "fr";
+    }
+    if (lower.startsWith("pt")) {
+      return "pt-BR";
+    }
+    if (lower.startsWith("hi")) {
+      return "hi";
+    }
+    if (lower.startsWith("ms")) {
+      return "ms";
+    }
+    if (lower.startsWith("fil")) {
+      return "fil";
+    }
+    if (lower.startsWith("my")) {
+      return "my";
+    }
+    if (lower.startsWith("ne")) {
+      return "ne";
+    }
+    if (lower.startsWith("si")) {
+      return "si";
+    }
+    return "en";
+  }
+
+  function normalizeLocalePreference(locale) {
+    const value = String(locale || "").trim();
+    if (!value || value.toLowerCase() === "auto") {
+      return "auto";
+    }
+    const normalized = normalizeLocale(value);
+    if (SUPPORTED_LOCALE_CODES.has(normalized)) {
+      return normalized;
+    }
+    return "auto";
+  }
+
   function getPreferredLocale() {
     const uiLanguage =
       (globalThis.chrome?.i18n && typeof chrome.i18n.getUILanguage === "function"
@@ -522,30 +629,45 @@
     return normalizeLocale(uiLanguage);
   }
 
-  function normalizeLocale(locale) {
-    const value = String(locale || "").trim().replace("_", "-").toLowerCase();
-    if (!value) {
-      return "en";
+  function resolveLocale(preference) {
+    if (preference === "auto") {
+      return getPreferredLocale();
     }
-    if (value.startsWith("ja")) {
-      return "ja";
+    return normalizeLocale(preference);
+  }
+
+  async function init() {
+    if (initInFlight) {
+      return initInFlight;
     }
-    if (value.startsWith("zh")) {
-      return "zh-CN";
+
+    initInFlight = (async () => {
+      try {
+        if (globalThis.chrome?.storage?.sync?.get) {
+          const values = await chrome.storage.sync.get([STORAGE_UI_LOCALE_KEY]);
+          localePreference = normalizeLocalePreference(values[STORAGE_UI_LOCALE_KEY]);
+        } else {
+          localePreference = "auto";
+        }
+      } catch (_error) {
+        localePreference = "auto";
+      }
+
+      activeLocale = resolveLocale(localePreference);
+      return activeLocale;
+    })();
+
+    try {
+      return await initInFlight;
+    } finally {
+      initInFlight = null;
     }
-    if (value.startsWith("ko")) {
-      return "ko";
-    }
-    if (value.startsWith("th")) {
-      return "th";
-    }
-    if (value.startsWith("vi")) {
-      return "vi";
-    }
-    if (value.startsWith("id")) {
-      return "id";
-    }
-    return "en";
+  }
+
+  function setLocalePreference(locale) {
+    localePreference = normalizeLocalePreference(locale);
+    activeLocale = resolveLocale(localePreference);
+    return activeLocale;
   }
 
   function interpolate(template, vars) {
@@ -554,18 +676,29 @@
     );
   }
 
-  const locale = getPreferredLocale();
+  activeLocale = resolveLocale(localePreference);
 
   function t(key, vars = {}) {
-    const bundle = LOCALES[locale] || LOCALES.en;
+    const bundle = LOCALES[activeLocale] || LOCALES.en;
     const fallback = LOCALES.en[key] ?? key;
     const template = bundle[key] ?? fallback;
     return interpolate(template, vars);
   }
 
-  globalThis.YomiRubyI18n = Object.freeze({
-    locale,
+  const api = {
+    get locale() {
+      return activeLocale;
+    },
+    get localePreference() {
+      return localePreference;
+    },
+    supportedLocales: SUPPORTED_LOCALES,
     normalizeLocale,
+    normalizeLocalePreference,
+    init,
+    setLocalePreference,
     t
-  });
+  };
+
+  globalThis.YomiRubyI18n = Object.freeze(api);
 })();

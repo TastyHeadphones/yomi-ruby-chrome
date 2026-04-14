@@ -118,6 +118,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function handleMessage(message, sender) {
+  if (typeof I18N?.init === "function") {
+    await I18N.init();
+  }
   const type = message?.type;
   const payload = message?.payload || {};
 
@@ -243,6 +246,7 @@ async function initializeDefaults() {
   const values = await chrome.storage.sync.get([
     C.STORAGE_KEYS.YAHOO_CLIENT_ID,
     C.STORAGE_KEYS.ANNOTATION_ENGINE,
+    C.STORAGE_KEYS.UI_LOCALE,
     C.STORAGE_KEYS.OFFLINE_MODE_ENABLED,
     C.STORAGE_KEYS.ENABLED_GLOBALLY
   ]);
@@ -266,6 +270,10 @@ async function initializeDefaults() {
 
   if (typeof values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] !== "boolean" && typeof nextValues[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] !== "boolean") {
     nextValues[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] = C.DEFAULTS.OFFLINE_MODE_ENABLED;
+  }
+
+  if (typeof values[C.STORAGE_KEYS.UI_LOCALE] !== "string" || !values[C.STORAGE_KEYS.UI_LOCALE].trim()) {
+    nextValues[C.STORAGE_KEYS.UI_LOCALE] = C.DEFAULTS.UI_LOCALE;
   }
 
   const currentEngine = values[C.STORAGE_KEYS.ANNOTATION_ENGINE];
@@ -359,6 +367,9 @@ function isSupportedUrl(url) {
 }
 
 async function runAutoAnnotation(tabId) {
+  if (typeof I18N?.init === "function") {
+    await I18N.init();
+  }
   const enabled = await getGlobalEnabled();
   if (!enabled) {
     return;

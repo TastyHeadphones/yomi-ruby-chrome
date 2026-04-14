@@ -48,15 +48,17 @@ Install from Chrome Web Store:
 - Supports offline annotation with a bundled local dictionary.
 - Includes Client ID testing, quota-aware pacing, progress UI, cancel, and kana visibility toggling.
 - Uses conservative DOM updates to reduce layout breakage on general websites.
-- Ships localized UI strings for English, Japanese, Simplified Chinese, Korean, Thai, Vietnamese, and Indonesian.
+- Lets users choose UI language in Settings (`Auto` + repository language set).
+- Ships translated UI strings for English, Japanese, Simplified Chinese, Korean, Thai, Vietnamese, and Indonesian.
 
 ## Quick Start
 
 1. Install from Chrome Web Store (link above).
-2. Open extension **Settings**, configure a Client ID for Yahoo API usage or enable offline mode for the bundled dictionary.
-3. Run **Test Client ID** when using the Yahoo API, then click **Save Settings**.
-4. Open a Japanese page and click **Run Annotation Now**.
-5. For local development, use `chrome://extensions` -> **Developer mode** -> **Load unpacked**.
+2. Open extension **Settings**, choose your UI language, and select annotation mode (`Yahoo API` or `Local dictionary`).
+3. Configure a Client ID when using Yahoo API mode.
+4. Run **Test Client ID** when using the Yahoo API, then click **Save Settings**.
+5. Open a Japanese page and click **Run Annotation Now**.
+6. For local development, use `chrome://extensions` -> **Developer mode** -> **Load unpacked**.
 
 ## Repository Layout
 

@@ -268,14 +268,19 @@
     stopStatusPolling();
   });
 
-  document.documentElement.lang = I18N?.locale || "en";
-  document.title = t("app_name");
-  annotateButton.textContent = t("popup_run_annotation_now");
-  cancelButton.textContent = t("popup_cancel_running_job");
-  updateKanaButtonLabel();
-  settingsButton.textContent = t("popup_open_settings");
+  (async () => {
+    if (typeof I18N?.init === "function") {
+      await I18N.init();
+    }
 
-  refreshContext().catch((error) => {
+    document.documentElement.lang = I18N?.locale || "en";
+    document.title = t("app_name");
+    annotateButton.textContent = t("popup_run_annotation_now");
+    cancelButton.textContent = t("popup_cancel_running_job");
+    updateKanaButtonLabel();
+    settingsButton.textContent = t("popup_open_settings");
+    await refreshContext();
+  })().catch((error) => {
     setStatus(error?.message || t("popup_initialization_failed"), true);
   });
 })();

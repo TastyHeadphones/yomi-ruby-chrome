@@ -5,6 +5,9 @@
   const title = document.getElementById("optionsTitle");
   const description = document.getElementById("optionsDescription");
   const developerPortalLink = document.getElementById("developerPortalLink");
+  const uiLanguageLabel = document.getElementById("uiLanguageLabel");
+  const uiLanguageSelect = document.getElementById("uiLanguageSelect");
+  const uiLanguageHelp = document.getElementById("uiLanguageHelp");
   const clientIdLabel = document.getElementById("clientIdLabel");
   const clientIdInput = document.getElementById("apiKeyInput");
   const annotationModeLabel = document.getElementById("annotationModeLabel");
@@ -47,12 +50,31 @@
     saveButton.disabled = isBusy;
   }
 
+  function renderLanguageOptions(selectedValue) {
+    const supported = Array.isArray(I18N?.supportedLocales) ? I18N.supportedLocales : [];
+    const currentValue = selectedValue || uiLanguageSelect.value || C.DEFAULTS.UI_LOCALE;
+    uiLanguageSelect.textContent = "";
+
+    for (const entry of supported) {
+      const option = document.createElement("option");
+      option.value = entry.code;
+      option.textContent =
+        entry.code === "auto" ? t("options_ui_language_auto") : String(entry.label || entry.code);
+      uiLanguageSelect.appendChild(option);
+    }
+
+    uiLanguageSelect.value = currentValue;
+  }
+
   function applyLocalizedText() {
     document.documentElement.lang = I18N?.locale || "en";
     document.title = t("options_title");
     title.textContent = t("options_title");
     description.textContent = t("options_description");
     developerPortalLink.textContent = "Yahoo! JAPAN Developer Network";
+    uiLanguageLabel.textContent = t("options_ui_language_label");
+    uiLanguageHelp.textContent = t("options_ui_language_help");
+    renderLanguageOptions(uiLanguageSelect.value || C.DEFAULTS.UI_LOCALE);
     clientIdLabel.textContent = t("options_client_id_label");
     clientIdInput.placeholder = t("options_client_id_placeholder");
     annotationModeLabel.textContent = t("options_annotation_mode_label");
@@ -78,6 +100,7 @@
   async function loadSettings() {
     const values = await chrome.storage.sync.get([
       C.STORAGE_KEYS.YAHOO_CLIENT_ID,
+      C.STORAGE_KEYS.UI_LOCALE,
       C.STORAGE_KEYS.ANNOTATION_ENGINE,
       C.STORAGE_KEYS.OFFLINE_MODE_ENABLED,
       C.STORAGE_KEYS.LEGACY_API_KEY,
@@ -102,13 +125,21 @@
               ? C.ANNOTATION_ENGINES.LOCAL_DICT
               : C.ANNOTATION_ENGINES.YAHOO_API
             : C.DEFAULTS.ANNOTATION_ENGINE;
+    const localePreference = I18N?.normalizeLocalePreference
+      ? I18N.normalizeLocalePreference(values[C.STORAGE_KEYS.UI_LOCALE])
+      : C.DEFAULTS.UI_LOCALE;
 
     clientIdInput.value = clientId;
     annotationModeSelect.value = annotationEngine;
+    uiLanguageSelect.value = localePreference;
+    renderLanguageOptions(localePreference);
   }
 
   async function saveSettings() {
     const clientId = clientIdInput.value.trim();
+    const localePreference = I18N?.normalizeLocalePreference
+      ? I18N.normalizeLocalePreference(uiLanguageSelect.value)
+      : C.DEFAULTS.UI_LOCALE;
     const annotationEngine =
       annotationModeSelect.value === C.ANNOTATION_ENGINES.YAHOO_API
         ? C.ANNOTATION_ENGINES.YAHOO_API
@@ -129,10 +160,15 @@
 
     await chrome.storage.sync.set({
       [C.STORAGE_KEYS.YAHOO_CLIENT_ID]: clientId,
+      [C.STORAGE_KEYS.UI_LOCALE]: localePreference,
       [C.STORAGE_KEYS.ANNOTATION_ENGINE]: annotationEngine,
       [C.STORAGE_KEYS.OFFLINE_MODE_ENABLED]: annotationEngine === C.ANNOTATION_ENGINES.LOCAL_DICT
     });
 
+    if (typeof I18N?.setLocalePreference === "function") {
+      I18N.setLocalePreference(localePreference);
+      applyLocalizedText();
+    }
     setFeedback(t("options_settings_saved"));
   }
 
@@ -185,8 +221,13 @@
       });
   });
 
-  applyLocalizedText();
-  loadSettings().catch((error) => {
+  (async () => {
+    if (typeof I18N?.init === "function") {
+      await I18N.init();
+    }
+    applyLocalizedText();
+    await loadSettings();
+  })().catch((error) => {
     setFeedback(error?.message || t("options_client_id_test_failed"), true);
   });
 })();
