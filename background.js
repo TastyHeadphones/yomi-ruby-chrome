@@ -1,12 +1,18 @@
-importScripts("utils/constants.js", "utils/japanese.js");
+importScripts("utils/constants.js", "utils/japanese.js", "utils/i18n.js");
 
 const C = globalThis.YomiRubyConstants;
 const Japanese = globalThis.YomiRubyJapanese;
+const I18N = globalThis.YomiRubyI18n;
+
+function t(key, vars = {}) {
+  return typeof I18N?.t === "function" ? I18N.t(key, vars) : key;
+}
 
 const YAHOO_FURIGANA_ENDPOINT = "https://jlp.yahooapis.jp/FuriganaService/V2/furigana";
 const furiganaCache = new Map();
 let nextApiRequestAt = 0;
 let quotaBackoffUntil = 0;
+let localDictionaryPromise = null;
 
 const MOCK_WORD_READINGS = [
   ["日本語", "にほんご"],
@@ -60,8 +66,6 @@ const MOCK_CHAR_READINGS = {
   東: "とう",
   京: "きょう"
 };
-
-const SORTED_MOCK_WORDS = [...MOCK_WORD_READINGS].sort((a, b) => b[0].length - a[0].length);
 
 class YomiRubyError extends Error {
   constructor(code, message, status) {
@@ -164,12 +168,28 @@ async function handleMessage(message, sender) {
       return cancelAnnotationOnTab(tabId);
     }
 
+    case C.MESSAGE_TYPES.GET_KANA_VISIBILITY: {
+      const tabId = Number(payload.tabId);
+      if (!Number.isInteger(tabId)) {
+        return { ok: false, error: C.ERROR_CODES.INVALID_RESPONSE, details: "tabId is required." };
+      }
+      return getKanaVisibilityOnTab(tabId);
+    }
+
+    case C.MESSAGE_TYPES.SET_KANA_VISIBILITY: {
+      const tabId = Number(payload.tabId);
+      if (!Number.isInteger(tabId)) {
+        return { ok: false, error: C.ERROR_CODES.INVALID_RESPONSE, details: "tabId is required." };
+      }
+      return setKanaVisibilityOnTab(tabId, Boolean(payload.hidden));
+    }
+
     case C.MESSAGE_TYPES.RESTORE_PAGE: {
       const tabId = Number(payload.tabId);
       if (!Number.isInteger(tabId)) {
         return { ok: false, error: C.ERROR_CODES.INVALID_RESPONSE, details: "tabId is required." };
       }
-      return restorePageOnTab(tabId);
+      return setKanaVisibilityOnTab(tabId, true);
     }
 
     case C.MESSAGE_TYPES.GET_ANNOTATION_STATUS: {
@@ -208,9 +228,10 @@ async function handleMessage(message, sender) {
       return annotateTextBatch(texts, sender);
     }
 
+    case C.MESSAGE_TYPES.TEST_CLIENT_ID:
     case C.MESSAGE_TYPES.TEST_API_KEY: {
-      const apiKey = String(payload.apiKey || "").trim();
-      return testApiKey(apiKey);
+      const clientId = String(payload.clientId || payload.apiKey || "").trim();
+      return testClientId(clientId);
     }
 
     default:
@@ -220,18 +241,38 @@ async function handleMessage(message, sender) {
 
 async function initializeDefaults() {
   const values = await chrome.storage.sync.get([
-    C.STORAGE_KEYS.DEMO_MODE_ENABLED,
+    C.STORAGE_KEYS.YAHOO_CLIENT_ID,
+    C.STORAGE_KEYS.OFFLINE_MODE_ENABLED,
     C.STORAGE_KEYS.ENABLED_GLOBALLY
   ]);
-  if (typeof values[C.STORAGE_KEYS.DEMO_MODE_ENABLED] !== "boolean") {
-    await chrome.storage.sync.set({
-      [C.STORAGE_KEYS.DEMO_MODE_ENABLED]: C.DEFAULTS.DEMO_MODE_ENABLED
-    });
+  const legacyValues = await chrome.storage.sync.get([
+    C.STORAGE_KEYS.LEGACY_API_KEY,
+    C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED
+  ]);
+
+  const nextValues = {};
+  const currentClientId = values[C.STORAGE_KEYS.YAHOO_CLIENT_ID];
+  const legacyClientId = legacyValues[C.STORAGE_KEYS.LEGACY_API_KEY];
+  if (typeof currentClientId !== "string" && typeof legacyClientId === "string" && legacyClientId.trim()) {
+    nextValues[C.STORAGE_KEYS.YAHOO_CLIENT_ID] = legacyClientId.trim();
   }
+
+  const currentOfflineMode = values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED];
+  const legacyOfflineMode = legacyValues[C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED];
+  if (typeof currentOfflineMode !== "boolean" && typeof legacyOfflineMode === "boolean") {
+    nextValues[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] = legacyOfflineMode;
+  }
+
+  if (typeof values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] !== "boolean" && typeof nextValues[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] !== "boolean") {
+    nextValues[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] = C.DEFAULTS.OFFLINE_MODE_ENABLED;
+  }
+
   if (typeof values[C.STORAGE_KEYS.ENABLED_GLOBALLY] !== "boolean") {
-    await chrome.storage.sync.set({
-      [C.STORAGE_KEYS.ENABLED_GLOBALLY]: C.DEFAULTS.ENABLED_GLOBALLY
-    });
+    nextValues[C.STORAGE_KEYS.ENABLED_GLOBALLY] = C.DEFAULTS.ENABLED_GLOBALLY;
+  }
+
+  if (Object.keys(nextValues).length > 0) {
+    await chrome.storage.sync.set(nextValues);
   }
 }
 
@@ -311,12 +352,13 @@ async function runAutoAnnotation(tabId) {
 }
 
 async function runAnnotationOnTab(tabId, payload) {
+  const settings = await getSettings();
   const tab = await chrome.tabs.get(tabId);
   if (!tab || !isSupportedUrl(tab.url || "")) {
     return {
       ok: false,
       error: C.ERROR_CODES.UNSUPPORTED_TAB,
-      details: "This tab URL cannot be annotated."
+      details: t("popup_page_cannot_be_annotated")
     };
   }
 
@@ -325,7 +367,7 @@ async function runAnnotationOnTab(tabId, payload) {
     return {
       ok: false,
       error: C.ERROR_CODES.BUSY,
-      details: "Annotation is already running on this page.",
+      details: t("content_annotation_already_running"),
       status: currentStatus
     };
   }
@@ -335,7 +377,7 @@ async function runAnnotationOnTab(tabId, payload) {
     return {
       ok: false,
       error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
-      details: "Could not load content script on this page."
+      details: t("content_annotation_failed")
     };
   }
 
@@ -344,14 +386,17 @@ async function runAnnotationOnTab(tabId, payload) {
     cancelRequested: false,
     state: "running",
     progressPercent: 0,
-    message: "Starting annotation...",
+    message: t("content_starting_annotation"),
     meta: ""
   });
 
   try {
     const response = await chrome.tabs.sendMessage(tabId, {
       type: C.MESSAGE_TYPES.ANNOTATE_PAGE,
-      payload
+      payload: {
+        ...payload,
+        offlineModeEnabled: settings.offlineModeEnabled
+      }
     });
     if (!response?.ok) {
       const isCanceled =
@@ -363,13 +408,13 @@ async function runAnnotationOnTab(tabId, payload) {
         cancelRequested: false,
         state: isCanceled ? "canceled" : "error",
         progressPercent: isCanceled ? 0 : 100,
-        message: isCanceled ? "Canceled." : "Failed.",
+        message: isCanceled ? t("content_annotation_canceled") : t("content_annotation_failed"),
         meta: response?.details || response?.error || ""
       });
       return {
         ok: false,
         error: response?.error || C.ERROR_CODES.INVALID_RESPONSE,
-        details: response?.details || "Annotation failed in content script."
+        details: response?.details || t("content_annotation_failed")
       };
     }
     const stats = response?.stats || {};
@@ -378,8 +423,12 @@ async function runAnnotationOnTab(tabId, payload) {
       cancelRequested: false,
       state: "done",
       progressPercent: 100,
-      message: "Completed.",
-      meta: `scanned ${stats.scanned || 0}, ruby ${stats.annotatedTokens || 0}`
+      message: t("content_annotation_completed"),
+      meta: t("popup_done_summary", {
+        scanned: stats.scanned || 0,
+        updated: stats.replacedNodes || 0,
+        ruby: stats.annotatedTokens || 0
+      })
     });
     return response;
   } catch (error) {
@@ -388,7 +437,7 @@ async function runAnnotationOnTab(tabId, payload) {
       cancelRequested: false,
       state: "error",
       progressPercent: 100,
-      message: "Failed.",
+      message: t("content_annotation_failed"),
       meta: error?.message || String(error)
     });
     return {
@@ -404,7 +453,7 @@ async function cancelAnnotationOnTab(tabId) {
   if (!status.running) {
     return {
       ok: true,
-      details: "No running annotation job."
+      details: t("content_no_running_annotation_job")
     };
   }
 
@@ -413,7 +462,7 @@ async function cancelAnnotationOnTab(tabId) {
     return {
       ok: false,
       error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
-      details: "Could not send cancel request to this page."
+      details: t("content_annotation_failed")
     };
   }
 
@@ -421,7 +470,7 @@ async function cancelAnnotationOnTab(tabId) {
     running: true,
     cancelRequested: true,
     state: "canceling",
-    message: "Cancel requested...",
+    message: t("content_cancel_requested"),
     meta: ""
   });
 
@@ -429,13 +478,13 @@ async function cancelAnnotationOnTab(tabId) {
     await chrome.tabs.sendMessage(tabId, {
       type: C.MESSAGE_TYPES.CANCEL_ANNOTATION
     });
-    return { ok: true, details: "Cancel request sent." };
+    return { ok: true, details: t("content_cancel_requested") };
   } catch (error) {
     await updateAnnotationStatus(tabId, {
       running: false,
       cancelRequested: false,
       state: "error",
-      message: "Cancel failed.",
+      message: t("content_annotation_failed"),
       meta: error?.message || String(error)
     });
     return {
@@ -446,13 +495,13 @@ async function cancelAnnotationOnTab(tabId) {
   }
 }
 
-async function restorePageOnTab(tabId) {
+async function setKanaVisibilityOnTab(tabId, hidden) {
   const tab = await chrome.tabs.get(tabId);
   if (!tab || !isSupportedUrl(tab.url || "")) {
     return {
       ok: false,
       error: C.ERROR_CODES.UNSUPPORTED_TAB,
-      details: "This tab URL cannot be restored."
+      details: t("popup_no_target_page")
     };
   }
 
@@ -461,22 +510,24 @@ async function restorePageOnTab(tabId) {
     return {
       ok: false,
       error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
-      details: "Could not load content script on this page."
+      details: t("content_annotation_failed")
     };
   }
 
   try {
     const response = await chrome.tabs.sendMessage(tabId, {
-      type: C.MESSAGE_TYPES.RESTORE_PAGE
+      type: C.MESSAGE_TYPES.SET_KANA_VISIBILITY,
+      payload: { hidden: Boolean(hidden) }
     });
     if (response?.ok) {
+      const nextHidden = Boolean(response.hidden ?? hidden);
       await updateAnnotationStatus(tabId, {
         running: false,
         cancelRequested: false,
         state: "idle",
         progressPercent: 0,
-        message: "Restored.",
-        meta: response?.details || ""
+        message: nextHidden ? t("content_kana_hidden") : t("content_kana_shown"),
+        meta: ""
       });
       return response;
     }
@@ -485,13 +536,13 @@ async function restorePageOnTab(tabId) {
       cancelRequested: false,
       state: "error",
       progressPercent: 0,
-      message: "Restore failed.",
+      message: t("popup_kana_visibility_failed"),
       meta: response?.details || response?.error || ""
     });
     return {
       ok: false,
       error: response?.error || C.ERROR_CODES.INVALID_RESPONSE,
-      details: response?.details || "Restore failed in content script."
+      details: response?.details || t("popup_kana_visibility_failed")
     };
   } catch (error) {
     await updateAnnotationStatus(tabId, {
@@ -499,9 +550,49 @@ async function restorePageOnTab(tabId) {
       cancelRequested: false,
       state: "error",
       progressPercent: 0,
-      message: "Restore failed.",
+      message: t("popup_kana_visibility_failed"),
       meta: error?.message || String(error)
     });
+    return {
+      ok: false,
+      error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
+      details: error?.message || String(error)
+    };
+  }
+}
+
+async function getKanaVisibilityOnTab(tabId) {
+  const tab = await chrome.tabs.get(tabId);
+  if (!tab || !isSupportedUrl(tab.url || "")) {
+    return {
+      ok: false,
+      error: C.ERROR_CODES.UNSUPPORTED_TAB,
+      details: t("popup_no_target_page")
+    };
+  }
+
+  const injected = await ensureContentScript(tabId);
+  if (!injected) {
+    return {
+      ok: false,
+      error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
+      details: t("content_annotation_failed")
+    };
+  }
+
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: C.MESSAGE_TYPES.GET_KANA_VISIBILITY
+    });
+    if (!response?.ok) {
+      return {
+        ok: false,
+        error: response?.error || C.ERROR_CODES.INVALID_RESPONSE,
+        details: response?.details || t("content_kana_visibility_failed")
+      };
+    }
+    return response;
+  } catch (error) {
     return {
       ok: false,
       error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
@@ -526,6 +617,7 @@ async function ensureContentScript(tabId) {
       files: [
         "utils/constants.js",
         "utils/japanese.js",
+        "utils/i18n.js",
         "utils/dom.js",
         "utils/ruby.js",
         "content.js"
@@ -540,54 +632,62 @@ async function ensureContentScript(tabId) {
 
 async function getSettings() {
   const values = await chrome.storage.sync.get([
-    C.STORAGE_KEYS.API_KEY,
-    C.STORAGE_KEYS.DEMO_MODE_ENABLED
+    C.STORAGE_KEYS.YAHOO_CLIENT_ID,
+    C.STORAGE_KEYS.OFFLINE_MODE_ENABLED,
+    C.STORAGE_KEYS.LEGACY_API_KEY,
+    C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED
   ]);
   return {
-    apiKey: String(values[C.STORAGE_KEYS.API_KEY] || "").trim(),
-    demoModeEnabled:
-      typeof values[C.STORAGE_KEYS.DEMO_MODE_ENABLED] === "boolean"
-        ? values[C.STORAGE_KEYS.DEMO_MODE_ENABLED]
-        : C.DEFAULTS.DEMO_MODE_ENABLED
+    clientId: String(
+      values[C.STORAGE_KEYS.YAHOO_CLIENT_ID] ||
+        values[C.STORAGE_KEYS.LEGACY_API_KEY] ||
+        ""
+    ).trim(),
+    offlineModeEnabled:
+      typeof values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED] === "boolean"
+        ? values[C.STORAGE_KEYS.OFFLINE_MODE_ENABLED]
+        : typeof values[C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED] === "boolean"
+          ? values[C.STORAGE_KEYS.LEGACY_DEMO_MODE_ENABLED]
+          : C.DEFAULTS.OFFLINE_MODE_ENABLED
   };
 }
 
-async function testApiKey(apiKey) {
-  if (!apiKey) {
+async function testClientId(clientId) {
+  if (!clientId) {
     return {
       ok: false,
-      error: C.ERROR_CODES.MISSING_API_KEY,
-      details: "Enter an API key before testing."
+      error: C.ERROR_CODES.MISSING_CLIENT_ID,
+      details: t("options_enter_client_id_before_testing")
     };
   }
 
-  if (/\s/.test(apiKey)) {
+  if (/\s/.test(clientId)) {
     return {
       ok: false,
-      error: C.ERROR_CODES.INVALID_API_KEY,
-      details: "API key should not contain spaces."
+      error: C.ERROR_CODES.INVALID_CLIENT_ID,
+      details: t("options_client_id_should_not_contain_spaces")
     };
   }
 
   try {
-    const tokens = await requestYahooFurigana(apiKey, "日本語の文章を解析します。");
+    const tokens = await requestYahooFurigana(clientId, "日本語の文章を解析します。");
     const tokenCount = Array.isArray(tokens) ? tokens.length : 0;
     if (tokenCount === 0) {
       return {
         ok: false,
         error: C.ERROR_CODES.INVALID_RESPONSE,
-        details: "Yahoo API returned an empty token result."
+        details: t("options_client_id_test_failed")
       };
     }
     return {
       ok: true,
-      details: `API test succeeded (${tokenCount} tokens).`
+      details: t("options_client_id_test_succeeded")
     };
   } catch (error) {
     return {
       ok: false,
       error: normalizeErrorCode(error),
-      details: error?.message || "API test failed."
+      details: error?.message || t("options_client_id_test_failed")
     };
   }
 }
@@ -599,11 +699,11 @@ async function annotateTextBatch(texts) {
   }
 
   const settings = await getSettings();
-  if (!settings.apiKey && !settings.demoModeEnabled) {
+  if (!settings.offlineModeEnabled && !settings.clientId) {
     return {
       ok: false,
-      error: C.ERROR_CODES.MISSING_API_KEY,
-      details: "No API key configured. Open Settings or enable demo mode."
+      error: C.ERROR_CODES.MISSING_CLIENT_ID,
+      details: t("options_provide_client_id_or_enable_offline")
     };
   }
 
@@ -622,7 +722,7 @@ async function annotateTextBatch(texts) {
     return {
       ok: false,
       error: firstErrorResult.error,
-      details: firstErrorResult.details || "Furigana API request failed."
+      details: firstErrorResult.details || t("content_annotation_failed")
     };
   }
 
@@ -680,7 +780,7 @@ async function annotateSingleText(text, settings) {
             mergedTokens.push({ surface: chunk, furigana: "" });
             continue;
           }
-          if (settings.apiKey) {
+          if (settings.clientId && !settings.offlineModeEnabled) {
             return {
               text,
               tokens: [{ surface: text, furigana: "" }],
@@ -787,17 +887,17 @@ function isInvalidParamsError(error) {
 }
 
 async function getFuriganaTokensForChunk(text, settings) {
-  const cacheMode = settings.apiKey ? "api" : "demo";
+  const cacheMode = settings.offlineModeEnabled ? "local" : "api";
   const cacheKey = `${cacheMode}:${text}`;
   if (furiganaCache.has(cacheKey)) {
     return furiganaCache.get(cacheKey);
   }
 
   let tokens = [];
-  if (settings.apiKey) {
-    tokens = await requestYahooFurigana(settings.apiKey, text);
+  if (settings.offlineModeEnabled) {
+    tokens = await createLocalDictionaryTokens(text);
   } else {
-    tokens = createMockTokens(text);
+    tokens = await requestYahooFurigana(settings.clientId, text);
   }
 
   const normalizedTokens = normalizeTokensForText(tokens, text);
@@ -874,7 +974,7 @@ function splitTextForApi(text, maxLength) {
   return chunks.length > 0 ? chunks : [text];
 }
 
-async function requestYahooFurigana(apiKey, text) {
+async function requestYahooFurigana(clientId, text) {
   const maxAttempts = Math.max(1, C.LIMITS.API_RETRY_MAX_ATTEMPTS || 3);
   let attempt = 0;
 
@@ -883,7 +983,7 @@ async function requestYahooFurigana(apiKey, text) {
     await waitForApiSlot();
 
     try {
-      return await requestYahooFuriganaOnce(apiKey, text);
+      return await requestYahooFuriganaOnce(clientId, text);
     } catch (error) {
       const isQuotaError = error?.code === C.ERROR_CODES.QUOTA_EXCEEDED;
       const canRetry = attempt < maxAttempts;
@@ -912,7 +1012,7 @@ async function waitForApiSlot() {
   nextApiRequestAt = Date.now() + (C.LIMITS.API_MIN_INTERVAL_MS || 260);
 }
 
-async function requestYahooFuriganaOnce(apiKey, text) {
+async function requestYahooFuriganaOnce(clientId, text) {
   const requestBody = {
     id: String(Date.now()),
     jsonrpc: "2.0",
@@ -923,7 +1023,7 @@ async function requestYahooFuriganaOnce(apiKey, text) {
     }
   };
 
-  const endpointWithAppId = `${YAHOO_FURIGANA_ENDPOINT}?appid=${encodeURIComponent(apiKey)}`;
+  const endpointWithAppId = `${YAHOO_FURIGANA_ENDPOINT}?appid=${encodeURIComponent(clientId)}`;
 
   const response = await fetchWithTimeout(
     endpointWithAppId,
@@ -939,7 +1039,7 @@ async function requestYahooFuriganaOnce(apiKey, text) {
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new YomiRubyError(C.ERROR_CODES.INVALID_API_KEY, "Yahoo API key rejected.", response.status);
+      throw new YomiRubyError(C.ERROR_CODES.INVALID_CLIENT_ID, "Yahoo Client ID rejected.", response.status);
     }
     if (response.status === 429) {
       const retryAfterSeconds = Number(response.headers.get("Retry-After"));
@@ -976,7 +1076,7 @@ async function requestYahooFuriganaOnce(apiKey, text) {
       throw new YomiRubyError(C.ERROR_CODES.QUOTA_EXCEEDED, message);
     }
     if (/app|key|auth|credential/i.test(message)) {
-      throw new YomiRubyError(C.ERROR_CODES.INVALID_API_KEY, message);
+      throw new YomiRubyError(C.ERROR_CODES.INVALID_CLIENT_ID, message);
     }
     throw new YomiRubyError(C.ERROR_CODES.NETWORK_FAILURE, message);
   }
@@ -1036,12 +1136,76 @@ function flattenYahooWords(words, target = []) {
   return target;
 }
 
-function createMockTokens(text) {
+async function createLocalDictionaryTokens(text) {
+  const sortedDictionary = await getLocalDictionaryEntries();
+  return buildDictionaryTokens(text, sortedDictionary, MOCK_CHAR_READINGS);
+}
+
+async function getLocalDictionaryEntries() {
+  if (!localDictionaryPromise) {
+    localDictionaryPromise = loadLocalDictionaryEntries();
+  }
+  return localDictionaryPromise;
+}
+
+async function loadLocalDictionaryEntries() {
+  const mergedEntries = new Map();
+
+  for (const [surface, reading] of MOCK_WORD_READINGS) {
+    if (surface) {
+      mergedEntries.set(surface, reading);
+    }
+  }
+
+  try {
+    const response = await fetch(chrome.runtime.getURL(C.ASSETS.LOCAL_DICTIONARY));
+    if (!response.ok) {
+      throw new Error(`Local dictionary request failed with status ${response.status}.`);
+    }
+
+    const payload = await response.json();
+    const entries = normalizeLocalDictionaryPayload(payload);
+    for (const entry of entries) {
+      if (entry.surface) {
+        mergedEntries.set(entry.surface, entry.reading);
+      }
+    }
+  } catch (error) {
+    console.warn("YomiRuby local dictionary load failed:", error);
+  }
+
+  return [...mergedEntries.entries()].sort((a, b) => b[0].length - a[0].length);
+}
+
+function normalizeLocalDictionaryPayload(payload) {
+  const rawEntries = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.entries)
+      ? payload.entries
+      : [];
+
+  return rawEntries
+    .map((entry) => {
+      if (Array.isArray(entry)) {
+        return {
+          surface: typeof entry[0] === "string" ? entry[0].trim() : "",
+          reading: typeof entry[1] === "string" ? entry[1].trim() : ""
+        };
+      }
+      return {
+        surface: typeof entry?.surface === "string" ? entry.surface.trim() : "",
+        reading: typeof entry?.reading === "string" ? entry.reading.trim() : ""
+      };
+    })
+    .filter((entry) => entry.surface.length > 0);
+}
+
+function buildDictionaryTokens(text, sortedDictionary, characterReadings) {
   const tokens = [];
   let index = 0;
 
   while (index < text.length) {
-    const longestWord = findLongestMockWord(text, index);
+    const longestWord = findLongestDictionaryEntry(text, index, sortedDictionary);
     if (longestWord) {
       tokens.push({ surface: longestWord.surface, furigana: longestWord.reading });
       index += longestWord.surface.length;
@@ -1052,7 +1216,7 @@ function createMockTokens(text) {
     if (Japanese.isKanji(currentChar)) {
       tokens.push({
         surface: currentChar,
-        furigana: MOCK_CHAR_READINGS[currentChar] || ""
+        furigana: characterReadings[currentChar] || ""
       });
       index += 1;
       continue;
@@ -1061,7 +1225,7 @@ function createMockTokens(text) {
     const start = index;
     index += 1;
     while (index < text.length) {
-      const hasWordMatch = findLongestMockWord(text, index);
+      const hasWordMatch = findLongestDictionaryEntry(text, index, sortedDictionary);
       const isKanji = Japanese.isKanji(text[index]);
       if (hasWordMatch || isKanji) {
         break;
@@ -1074,8 +1238,8 @@ function createMockTokens(text) {
   return mergePlainTokens(tokens);
 }
 
-function findLongestMockWord(text, startIndex) {
-  for (const [surface, reading] of SORTED_MOCK_WORDS) {
+function findLongestDictionaryEntry(text, startIndex, sortedDictionary) {
+  for (const [surface, reading] of sortedDictionary) {
     if (text.startsWith(surface, startIndex)) {
       return { surface, reading };
     }

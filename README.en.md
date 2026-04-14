@@ -24,20 +24,22 @@ YomiRuby is a production-ready Manifest V3 Chrome extension that annotates Japan
 
 - Sentence and paragraph-based annotation flow.
 - Progress overlay with live status updates.
-- Cancel and restore actions for safe iteration.
+- Cancel and kana visibility actions for safe iteration.
 - Quota-aware pacing and retry/backoff logic for Yahoo API.
-- API key test flow in Settings page.
-- Demo mode fallback when API key is missing.
+- Client ID test flow in Settings page.
+- Offline mode fallback with a local dictionary when Client ID is missing or offline mode is enabled.
 - Conservative DOM updates to reduce layout breakage.
+- UI localization for English, Japanese, Simplified Chinese, Korean, Thai, Vietnamese, and Indonesian.
 
 ## Quick Start
 
 1. Install from Chrome Web Store (link above).
-2. Open extension **Settings**, set API key, click **Test API Key**, then **Save Settings**.
-3. Visit a Japanese page and click **Run Annotation Now**.
-4. For local development, open `chrome://extensions`, enable **Developer mode**, then **Load unpacked**.
+2. Open extension **Settings**, set a Client ID if you want Yahoo API usage, or enable offline mode for the local dictionary.
+3. Click **Test Client ID** when using the Yahoo API, then **Save Settings**.
+4. Visit a Japanese page and click **Run Annotation Now**.
+5. For local development, open `chrome://extensions`, enable **Developer mode**, then **Load unpacked**.
 
-## API Key Setup
+## Client ID Setup
 
 - Developer portal: <https://developer.yahoo.co.jp/>
 - API reference: <https://developer.yahoo.co.jp/webapi/jlp/furigana/v2/furigana.html>
@@ -46,21 +48,23 @@ YomiRuby sends requests to:
 
 - `https://jlp.yahooapis.jp/FuriganaService/V2/furigana`
 
+If you prefer offline mode, YomiRuby uses a bundled local dictionary and does not send page text to Yahoo.
+
 ## Architecture
 
 | Component | Responsibility |
 |---|---|
-| `background.js` | API communication, quota pacing, retries, and tab/job status |
-| `content.js` | DOM traversal, safe ruby injection, progress overlay, cancel/restore |
-| `popup.*` | User controls: enable, run, cancel, restore, open settings |
-| `options.*` | API key input, validation, API test, save settings |
+| `background.js` | API communication, offline dictionary loading, quota pacing, retries, and tab/job status |
+| `content.js` | DOM traversal, safe ruby injection, progress overlay, cancel/kana visibility |
+| `popup.*` | User controls: enable, run, cancel, kana visibility, open settings |
+| `options.*` | Client ID input, validation, API test, offline mode, save settings |
 | `utils/*` | Constants, Japanese text helpers, DOM and ruby utilities |
 
 ## Permissions
 
 | Permission | Why it is required |
 |---|---|
-| `storage` | Store API key/settings and temporary annotation status |
+| `storage` | Store Client ID/settings and temporary annotation status |
 | `tabs` | Access active tab and send annotation commands |
 | `scripting` | Ensure content scripts are available on target pages |
 | `<all_urls>` | Annotate general websites |
@@ -69,8 +73,8 @@ YomiRuby sends requests to:
 ## Privacy and Security
 
 - Full policy: [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
-- API key is provided by the user and is never hardcoded.
-- Text is sent to Yahoo API only when annotation is requested.
+- Client ID is provided by the user and is never hardcoded.
+- Text is sent to Yahoo API only when annotation is requested and offline mode is disabled.
 - No YomiRuby backend server is used.
 
 ## Limitations

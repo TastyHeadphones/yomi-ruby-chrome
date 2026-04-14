@@ -1,17 +1,23 @@
 (() => {
   const C = globalThis.YomiRubyConstants;
+  const I18N = globalThis.YomiRubyI18n;
   const toggle = document.getElementById("tabToggle");
   const toggleLabel = document.getElementById("toggleLabel");
   const annotateButton = document.getElementById("annotateBtn");
   const cancelButton = document.getElementById("cancelBtn");
-  const restoreButton = document.getElementById("restoreBtn");
+  const kanaButton = document.getElementById("kanaBtn");
   const settingsButton = document.getElementById("settingsBtn");
   const statusText = document.getElementById("statusText");
 
   let currentTabId = null;
   let pageSupported = false;
   let annotationRunning = false;
+  let kanaHidden = false;
   let statusPollTimer = null;
+
+  function t(key, vars = {}) {
+    return typeof I18N?.t === "function" ? I18N.t(key, vars) : key;
+  }
 
   function setStatus(message, isError = false) {
     statusText.textContent = message;
@@ -21,13 +27,19 @@
   function setControlsEnabled(enabled) {
     toggle.disabled = !enabled;
     annotateButton.disabled = !enabled || annotationRunning;
-    restoreButton.disabled = !enabled || annotationRunning;
+    kanaButton.disabled = !enabled || annotationRunning;
     cancelButton.disabled = !enabled || !annotationRunning;
     settingsButton.disabled = false;
   }
 
   function updateToggleLabel(enabled) {
-    toggleLabel.textContent = enabled ? "Enabled on all pages" : "Enable on all pages";
+    toggleLabel.textContent = enabled
+      ? t("popup_enabled_on_all_pages")
+      : t("popup_enable_on_all_pages");
+  }
+
+  function updateKanaButtonLabel() {
+    kanaButton.textContent = kanaHidden ? t("popup_show_kana") : t("popup_hide_kana");
   }
 
   function updateRunningUi(status) {
@@ -36,19 +48,22 @@
 
     if (annotationRunning) {
       const percent = Number.isFinite(status?.progressPercent) ? status.progressPercent : 0;
-      annotateButton.textContent = `Annotating... ${percent}%`;
-      const message = status?.message || "Running annotation...";
+      annotateButton.textContent = t("popup_annotating", { percent });
+      const message = status?.message || t("popup_starting_annotation");
       const meta = status?.meta ? ` | ${status.meta}` : "";
       setStatus(`${message}${meta}`);
     } else {
-      annotateButton.textContent = "Run Annotation Now";
+      annotateButton.textContent = t("popup_run_annotation_now");
+      updateKanaButtonLabel();
       const state = String(status?.state || "");
       if (state === "done") {
-        setStatus(status?.meta || "Annotation completed.");
+        setStatus(status?.meta || t("popup_annotation_completed"));
       } else if (state === "canceled") {
-        setStatus("Annotation canceled.");
+        setStatus(status?.meta || t("popup_annotation_canceled"));
       } else if (state === "error") {
-        setStatus(status?.meta || "Annotation failed.", true);
+        setStatus(status?.meta || t("popup_annotation_failed"), true);
+      } else if (status?.message) {
+        setStatus(status?.meta ? `${status.message} | ${status.meta}` : status.message);
       }
     }
 
@@ -97,12 +112,27 @@
     updateToggleLabel(enabled);
   }
 
+  async function fetchKanaVisibility() {
+    if (typeof currentTabId !== "number") {
+      return;
+    }
+    const response = await chrome.runtime.sendMessage({
+      type: C.MESSAGE_TYPES.GET_KANA_VISIBILITY,
+      payload: { tabId: currentTabId }
+    });
+    if (!response?.ok) {
+      return;
+    }
+    kanaHidden = Boolean(response.hidden);
+    updateKanaButtonLabel();
+  }
+
   async function refreshContext() {
     const tab = await getActiveTab();
     if (!tab || typeof tab.id !== "number") {
       pageSupported = false;
       setControlsEnabled(false);
-      setStatus("No active tab available.", true);
+      setStatus(t("popup_no_active_tab"), true);
       return;
     }
 
@@ -110,28 +140,29 @@
     pageSupported = /^(https?|file):/i.test(tab.url || "");
     if (!pageSupported) {
       setControlsEnabled(false);
-      setStatus("This page cannot be annotated.", true);
+      setStatus(t("popup_page_cannot_be_annotated"), true);
       return;
     }
 
     setControlsEnabled(true);
     await refreshGlobalState();
     await fetchAnnotationStatus();
+    await fetchKanaVisibility();
     startStatusPolling();
   }
 
   async function runAnnotation(trigger) {
     if (typeof currentTabId !== "number" || !pageSupported) {
-      setStatus("No target page.", true);
+      setStatus(t("popup_no_target_page"), true);
       return;
     }
     if (annotationRunning) {
       return;
     }
 
-    setStatus("Starting annotation...");
+    setStatus(t("popup_starting_annotation"));
     annotateButton.disabled = true;
-    annotateButton.textContent = "Starting...";
+    annotateButton.textContent = t("popup_starting");
 
     const response = await chrome.runtime.sendMessage({
       type: C.MESSAGE_TYPES.RUN_ANNOTATION,
@@ -141,16 +172,22 @@
     await fetchAnnotationStatus();
 
     if (!response?.ok) {
-      const details = response?.details || response?.error || "Annotation failed.";
+      const details = response?.details || response?.error || t("popup_annotation_failed");
       setStatus(details, true);
       return;
     }
 
     const stats = response?.stats;
     if (stats) {
-      setStatus(`Done: scanned ${stats.scanned}, updated ${stats.replacedNodes}, ruby ${stats.annotatedTokens}.`);
+      setStatus(
+        t("popup_done_summary", {
+          scanned: stats.scanned || 0,
+          updated: stats.replacedNodes || 0,
+          ruby: stats.annotatedTokens || 0
+        })
+      );
     } else {
-      setStatus("Annotation completed.");
+      setStatus(t("popup_annotation_completed"));
     }
   }
 
@@ -163,33 +200,36 @@
       payload: { tabId: currentTabId }
     });
     if (!response?.ok) {
-      setStatus(response?.details || "Cancel request failed.", true);
+      setStatus(response?.details || t("popup_cancel_request_failed"), true);
       return;
     }
-    setStatus(response?.details || "Cancel requested.");
+    setStatus(response?.details || t("popup_cancel_requested"));
     await fetchAnnotationStatus();
   }
 
-  async function restorePage() {
+  async function toggleKanaVisibility() {
     if (typeof currentTabId !== "number" || !pageSupported) {
-      setStatus("No target page.", true);
+      setStatus(t("popup_no_target_page"), true);
       return;
     }
     if (annotationRunning) {
-      setStatus("Cannot restore while annotation is running.", true);
+      setStatus(t("popup_cannot_toggle_kana_while_running"), true);
       return;
     }
 
     const response = await chrome.runtime.sendMessage({
-      type: C.MESSAGE_TYPES.RESTORE_PAGE,
-      payload: { tabId: currentTabId }
+      type: C.MESSAGE_TYPES.SET_KANA_VISIBILITY,
+      payload: { tabId: currentTabId, hidden: !kanaHidden }
     });
 
     if (!response?.ok) {
-      setStatus(response?.details || "Restore failed.", true);
+      setStatus(response?.details || t("popup_kana_visibility_failed"), true);
       return;
     }
-    setStatus(response?.details || "Restored.");
+    kanaHidden = Boolean(response.hidden ?? !kanaHidden);
+    updateKanaButtonLabel();
+    setStatus(response?.details || (kanaHidden ? t("popup_kana_hidden") : t("popup_kana_shown")));
+    await fetchAnnotationStatus();
   }
 
   toggle.addEventListener("change", async () => {
@@ -201,10 +241,10 @@
     });
 
     if (enabled) {
-      setStatus("Enabled on all pages.");
+      setStatus(t("popup_enabled_on_all_pages"));
       await runAnnotation("toggle_global");
     } else {
-      setStatus("Disabled on all pages.");
+      setStatus(t("popup_disabled_on_all_pages"));
     }
   });
 
@@ -216,8 +256,8 @@
     await cancelAnnotation();
   });
 
-  restoreButton.addEventListener("click", async () => {
-    await restorePage();
+  kanaButton.addEventListener("click", async () => {
+    await toggleKanaVisibility();
   });
 
   settingsButton.addEventListener("click", async () => {
@@ -228,7 +268,14 @@
     stopStatusPolling();
   });
 
+  document.documentElement.lang = I18N?.locale || "en";
+  document.title = t("app_name");
+  annotateButton.textContent = t("popup_run_annotation_now");
+  cancelButton.textContent = t("popup_cancel_running_job");
+  updateKanaButtonLabel();
+  settingsButton.textContent = t("popup_open_settings");
+
   refreshContext().catch((error) => {
-    setStatus(error?.message || "Popup initialization failed.", true);
+    setStatus(error?.message || t("popup_initialization_failed"), true);
   });
 })();

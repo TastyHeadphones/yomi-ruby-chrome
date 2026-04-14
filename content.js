@@ -8,6 +8,7 @@
   const Dom = globalThis.YomiRubyDom;
   const Ruby = globalThis.YomiRubyRuby;
   const Japanese = globalThis.YomiRubyJapanese;
+  const I18N = globalThis.YomiRubyI18n;
 
   const processedNodes = new WeakSet();
   let annotationInProgress = false;
@@ -20,6 +21,11 @@
   const PROGRESS_META_ID = "yomiruby-progress-meta";
   const PARAGRAPH_SELECTOR =
     "p,li,dd,dt,blockquote,figcaption,caption,td,th,h1,h2,h3,h4,h5,h6";
+  const ANNOTATED_RUBY_SELECTOR = "ruby.yomiruby-ruby[data-yomiruby-annotated='1']";
+
+  function t(key, vars = {}) {
+    return typeof I18N?.t === "function" ? I18N.t(key, vars) : key;
+  }
 
   function ensureAnnotationStyle() {
     if (document.getElementById("yomiruby-style")) {
@@ -35,6 +41,10 @@
       ruby.yomiruby-ruby rt.yomiruby-rt {
         font-size: 0.55em;
         line-height: 1;
+      }
+      html[data-yomiruby-kana-hidden='1'] ruby.yomiruby-ruby rt.yomiruby-rt,
+      html[data-yomiruby-kana-hidden='1'] ruby.yomiruby-ruby rp {
+        display: none !important;
       }
       #${PROGRESS_ID} {
         position: fixed;
@@ -122,9 +132,9 @@
     overlay.setAttribute("role", "status");
     overlay.setAttribute("aria-live", "polite");
     overlay.innerHTML = `
-      <div class="yomi-title">YomiRuby</div>
+      <div class="yomi-title">${t("app_name")}</div>
       <div class="yomi-track"><div id="${PROGRESS_BAR_ID}"></div></div>
-      <div id="${PROGRESS_TEXT_ID}">Preparing...</div>
+      <div id="${PROGRESS_TEXT_ID}">${t("content_preparing")}</div>
       <div id="${PROGRESS_META_ID}"></div>
     `;
 
@@ -221,62 +231,28 @@
     );
   }
 
-  function extractRubySurface(ruby) {
-    const fromAttribute = ruby.getAttribute("data-yomiruby-surface");
-    if (fromAttribute) {
-      return fromAttribute;
-    }
-
-    let surface = "";
-    for (const child of ruby.childNodes) {
-      if (child.nodeType === Node.ELEMENT_NODE) {
-        const tagName = child.tagName ? child.tagName.toLowerCase() : "";
-        if (tagName === "rt" || tagName === "rp") {
-          continue;
-        }
-      }
-      if (child.nodeType === Node.TEXT_NODE) {
-        surface += child.nodeValue || "";
-      }
-    }
-    return surface || ruby.textContent || "";
+  function getKanaVisibilityState() {
+    const root = document.documentElement;
+    return Boolean(root && root.getAttribute("data-yomiruby-kana-hidden") === "1");
   }
 
-  function restoreAnnotations() {
-    const rubies = Array.from(
-      document.querySelectorAll("ruby.yomiruby-ruby[data-yomiruby-annotated='1']")
-    );
-    if (rubies.length === 0) {
-      return { restored: 0 };
+  function setKanaVisibility(hidden) {
+    const root = document.documentElement;
+    if (!root) {
+      return { hidden: Boolean(hidden), affected: 0 };
     }
 
-    const parentSet = new Set();
-    for (const ruby of rubies) {
-      if (!ruby.isConnected) {
-        continue;
-      }
-      const parent = ruby.parentNode;
-      const surface = extractRubySurface(ruby);
-      ruby.replaceWith(document.createTextNode(surface));
-      if (parent && parent.nodeType === Node.ELEMENT_NODE) {
-        parentSet.add(parent);
-      }
+    const nextHidden = Boolean(hidden);
+    if (nextHidden) {
+      root.setAttribute("data-yomiruby-kana-hidden", "1");
+    } else {
+      root.removeAttribute("data-yomiruby-kana-hidden");
     }
 
-    for (const parent of parentSet) {
-      if (typeof parent.normalize === "function") {
-        parent.normalize();
-      }
-    }
-
-    const overlay = document.getElementById(PROGRESS_ID);
-    if (overlay) {
-      overlay.remove();
-    }
-    clearProgressCleanupTimer();
-    cancelRequested = false;
-
-    return { restored: rubies.length };
+    return {
+      hidden: nextHidden,
+      affected: document.querySelectorAll(ANNOTATED_RUBY_SELECTOR).length
+    };
   }
 
   async function annotateParagraph(paragraph) {
@@ -290,7 +266,7 @@
         return {
           ok: false,
           error: C.ERROR_CODES.CANCELED,
-          details: "Canceled by user.",
+          details: t("content_annotation_canceled"),
           canceled: true
         };
       }
@@ -325,7 +301,7 @@
           return {
             ok: false,
             error: C.ERROR_CODES.CANCELED,
-            details: "Canceled by user.",
+            details: t("content_annotation_canceled"),
             canceled: true
           };
         }
@@ -365,25 +341,26 @@
     };
   }
 
-  async function annotatePage() {
+  async function annotatePage(options = {}) {
     if (annotationInProgress) {
-      return { ok: false, error: "busy", details: "An annotation job is already running." };
+      return { ok: false, error: "busy", details: t("content_annotation_already_running") };
     }
 
     annotationInProgress = true;
     cancelRequested = false;
     clearProgressCleanupTimer();
     ensureAnnotationStyle();
+    const offlineModeEnabled = Boolean(options.offlineModeEnabled);
 
     try {
       const root = document.body || document.documentElement;
       if (!root) {
-        return { ok: false, error: "no_root_node", details: "No document root available." };
+        return { ok: false, error: "no_root_node", details: t("content_no_root_node") };
       }
 
       const paragraphs = collectParagraphRoots(root);
       if (paragraphs.length === 0) {
-        finishProgress(true, "No kanji text found.", "");
+        finishProgress(true, t("content_no_kanji_text_found"), "");
         return {
           ok: true,
           stats: {
@@ -404,17 +381,17 @@
       renderProgress(
         0,
         totalSteps,
-        `0 / ${paragraphs.length} paragraphs`,
-        "Starting annotation..."
+        t("content_paragraph_progress", { current: 0, total: paragraphs.length }),
+        t("content_starting_annotation")
       );
 
       for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex += 1) {
         if (cancelRequested) {
-          finishProgress(false, "Annotation canceled.", "");
+          finishProgress(false, t("content_annotation_canceled"), "");
           return {
             ok: false,
             error: C.ERROR_CODES.CANCELED,
-            details: "Canceled by user.",
+            details: t("content_annotation_canceled"),
             canceled: true
           };
         }
@@ -422,23 +399,23 @@
         const result = await annotateParagraph(paragraph);
         if (!result.ok) {
           if (isCanceledResult(result)) {
-            finishProgress(false, "Annotation canceled.", "");
+            finishProgress(false, t("content_annotation_canceled"), "");
             return {
               ok: false,
               error: C.ERROR_CODES.CANCELED,
-              details: "Canceled by user.",
+              details: t("content_annotation_canceled"),
               canceled: true
             };
           }
           finishProgress(
             false,
-            "Annotation stopped.",
+            t("content_annotation_stopped"),
             result.details || result.error || "Unknown error"
           );
           return {
             ok: false,
             error: result.error || "annotation_failed",
-            details: result.details || "Paragraph annotation failed."
+            details: result.details || t("content_annotation_failed")
           };
         }
 
@@ -451,11 +428,15 @@
         renderProgress(
           done,
           totalSteps,
-          `${done} / ${paragraphs.length} paragraphs | ruby ${totalAnnotatedTokens}`,
-          `Updating page...`
+          t("content_paragraph_progress_with_ruby", {
+            current: done,
+            total: paragraphs.length,
+            ruby: totalAnnotatedTokens
+          }),
+          t("content_updating_page")
         );
 
-        if (C.LIMITS.PARAGRAPH_DELAY_MS > 0) {
+        if (!offlineModeEnabled && C.LIMITS.PARAGRAPH_DELAY_MS > 0) {
           await new Promise((resolve) => setTimeout(resolve, C.LIMITS.PARAGRAPH_DELAY_MS));
         }
       }
@@ -463,38 +444,42 @@
       renderProgress(
         paragraphs.length,
         totalSteps,
-        `${paragraphs.length} / ${paragraphs.length} paragraphs | ruby ${totalAnnotatedTokens}`,
-        "Final pass..."
+        t("content_paragraph_progress_with_ruby", {
+          current: paragraphs.length,
+          total: paragraphs.length,
+          ruby: totalAnnotatedTokens
+        }),
+        t("content_final_pass")
       );
       if (cancelRequested) {
-        finishProgress(false, "Annotation canceled.", "");
+        finishProgress(false, t("content_annotation_canceled"), "");
         return {
           ok: false,
           error: C.ERROR_CODES.CANCELED,
-          details: "Canceled by user.",
+          details: t("content_annotation_canceled"),
           canceled: true
         };
       }
       const finalResult = await annotateParagraph(root);
       if (!finalResult.ok) {
         if (isCanceledResult(finalResult)) {
-          finishProgress(false, "Annotation canceled.", "");
+          finishProgress(false, t("content_annotation_canceled"), "");
           return {
             ok: false,
             error: C.ERROR_CODES.CANCELED,
-            details: "Canceled by user.",
+            details: t("content_annotation_canceled"),
             canceled: true
           };
         }
         finishProgress(
           false,
-          "Annotation stopped.",
+          t("content_annotation_stopped"),
           finalResult.details || finalResult.error || "Unknown error"
         );
         return {
           ok: false,
           error: finalResult.error || "annotation_failed",
-          details: finalResult.details || "Final pass failed."
+          details: finalResult.details || t("content_annotation_failed")
         };
       }
 
@@ -505,13 +490,17 @@
       renderProgress(
         totalSteps,
         totalSteps,
-        `${paragraphs.length} / ${paragraphs.length} paragraphs | ruby ${totalAnnotatedTokens}`,
-        "Final pass done."
+        t("content_paragraph_progress_with_ruby", {
+          current: paragraphs.length,
+          total: paragraphs.length,
+          ruby: totalAnnotatedTokens
+        }),
+        t("content_final_pass_done")
       );
 
       finishProgress(
         true,
-        "Annotation completed.",
+        t("content_annotation_completed"),
         `scanned ${totalScanned}, updated ${totalReplacedNodes}, ruby ${totalAnnotatedTokens}`
       );
 
@@ -525,7 +514,7 @@
         }
       };
     } catch (error) {
-      finishProgress(false, "Annotation failed.", error?.message || String(error));
+      finishProgress(false, t("content_annotation_failed"), error?.message || String(error));
       return {
         ok: false,
         error: "annotation_failed",
@@ -545,31 +534,39 @@
 
     if (type === C.MESSAGE_TYPES.CANCEL_ANNOTATION) {
       cancelRequested = true;
-      emitRuntimeProgress("canceling", 0, "Cancel requested...", "", true);
+      emitRuntimeProgress("canceling", 0, t("content_cancel_requested"), "", true);
       sendResponse({ ok: true });
       return;
     }
 
-    if (type === C.MESSAGE_TYPES.RESTORE_PAGE) {
+    if (type === C.MESSAGE_TYPES.GET_KANA_VISIBILITY) {
+      sendResponse({ ok: true, hidden: getKanaVisibilityState() });
+      return;
+    }
+
+    if (type === C.MESSAGE_TYPES.RESTORE_PAGE || type === C.MESSAGE_TYPES.SET_KANA_VISIBILITY) {
       if (annotationInProgress) {
         sendResponse({
           ok: false,
           error: C.ERROR_CODES.BUSY,
-          details: "Cannot restore while annotation is running."
+          details: t("popup_cannot_toggle_kana_while_running")
         });
         return;
       }
-      const restored = restoreAnnotations();
+      const hidden = type === C.MESSAGE_TYPES.RESTORE_PAGE
+        ? true
+        : Boolean(message?.payload?.hidden);
+      const result = setKanaVisibility(hidden);
       sendResponse({
         ok: true,
-        stats: restored,
-        details: `Restored ${restored.restored} ruby annotations.`
+        stats: result,
+        details: hidden ? t("content_kana_hidden") : t("content_kana_shown")
       });
       return;
     }
 
     if (type === C.MESSAGE_TYPES.ANNOTATE_PAGE) {
-      annotatePage().then(sendResponse);
+      annotatePage(message?.payload || {}).then(sendResponse);
       return true;
     }
   });

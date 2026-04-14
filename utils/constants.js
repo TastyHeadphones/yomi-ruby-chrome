@@ -2,8 +2,12 @@
   const constants = {
     EXTENSION_NAME: "YomiRuby",
     STORAGE_KEYS: {
-      API_KEY: "yomirubyYahooApiKey",
-      DEMO_MODE_ENABLED: "yomirubyDemoModeEnabled",
+      YAHOO_CLIENT_ID: "yomirubyYahooClientId",
+      API_KEY: "yomirubyYahooClientId",
+      OFFLINE_MODE_ENABLED: "yomirubyOfflineModeEnabled",
+      DEMO_MODE_ENABLED: "yomirubyOfflineModeEnabled",
+      LEGACY_API_KEY: "yomirubyYahooApiKey",
+      LEGACY_DEMO_MODE_ENABLED: "yomirubyDemoModeEnabled",
       ENABLED_GLOBALLY: "yomirubyEnabledGlobally"
     },
     SESSION_KEYS: {
@@ -18,17 +22,22 @@
       SET_GLOBAL_STATE: "YOMIRUBY_SET_GLOBAL_STATE",
       RUN_ANNOTATION: "YOMIRUBY_RUN_ANNOTATION",
       CANCEL_ANNOTATION: "YOMIRUBY_CANCEL_ANNOTATION",
+      SET_KANA_VISIBILITY: "YOMIRUBY_SET_KANA_VISIBILITY",
+      GET_KANA_VISIBILITY: "YOMIRUBY_GET_KANA_VISIBILITY",
       RESTORE_PAGE: "YOMIRUBY_RESTORE_PAGE",
       GET_ANNOTATION_STATUS: "YOMIRUBY_GET_ANNOTATION_STATUS",
       ANNOTATION_PROGRESS: "YOMIRUBY_ANNOTATION_PROGRESS",
       OPEN_OPTIONS: "YOMIRUBY_OPEN_OPTIONS",
       ANNOTATE_PAGE: "YOMIRUBY_ANNOTATE_PAGE",
       ANNOTATE_TEXT_BATCH: "YOMIRUBY_ANNOTATE_TEXT_BATCH",
+      TEST_CLIENT_ID: "YOMIRUBY_TEST_CLIENT_ID",
       TEST_API_KEY: "YOMIRUBY_TEST_API_KEY"
     },
     ERROR_CODES: {
-      MISSING_API_KEY: "missing_api_key",
-      INVALID_API_KEY: "invalid_api_key",
+      MISSING_CLIENT_ID: "missing_client_id",
+      MISSING_API_KEY: "missing_client_id",
+      INVALID_CLIENT_ID: "invalid_client_id",
+      INVALID_API_KEY: "invalid_client_id",
       QUOTA_EXCEEDED: "quota_exceeded",
       NETWORK_FAILURE: "network_failure",
       INVALID_RESPONSE: "invalid_response",
@@ -49,8 +58,11 @@
       FURIGANA_CACHE_SIZE: 500
     },
     DEFAULTS: {
-      DEMO_MODE_ENABLED: true,
+      OFFLINE_MODE_ENABLED: true,
       ENABLED_GLOBALLY: false
+    },
+    ASSETS: {
+      LOCAL_DICTIONARY: "data/local-annotate-dict.json"
     }
   };
 

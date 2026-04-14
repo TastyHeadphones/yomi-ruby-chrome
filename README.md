@@ -44,16 +44,19 @@ Install from Chrome Web Store:
 ## Why YomiRuby
 
 - Annotates visible Japanese text with `<ruby>`, `<rt>`, and `<rp>`.
-- Uses user-owned Yahoo API keys (no hardcoded credentials).
-- Includes API key testing, quota-aware pacing, progress UI, cancel, and restore.
+- Uses user-owned Yahoo Client IDs (no hardcoded credentials).
+- Supports offline annotation with a bundled local dictionary.
+- Includes Client ID testing, quota-aware pacing, progress UI, cancel, and kana visibility toggling.
 - Uses conservative DOM updates to reduce layout breakage on general websites.
+- Ships localized UI strings for English, Japanese, Simplified Chinese, Korean, Thai, Vietnamese, and Indonesian.
 
 ## Quick Start
 
 1. Install from Chrome Web Store (link above).
-2. Open extension **Settings**, configure API key, and run **Test API Key**.
-3. Open a Japanese page and click **Run Annotation Now**.
-4. For local development, use `chrome://extensions` -> **Developer mode** -> **Load unpacked**.
+2. Open extension **Settings**, configure a Client ID for Yahoo API usage or enable offline mode for the bundled dictionary.
+3. Run **Test Client ID** when using the Yahoo API, then click **Save Settings**.
+4. Open a Japanese page and click **Run Annotation Now**.
+5. For local development, use `chrome://extensions` -> **Developer mode** -> **Load unpacked**.
 
 ## Repository Layout
 

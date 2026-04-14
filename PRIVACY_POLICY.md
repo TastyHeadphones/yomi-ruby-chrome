@@ -8,23 +8,25 @@ YomiRuby is a Chrome extension that annotates Japanese text with furigana on web
 
 YomiRuby processes only the data needed to provide furigana annotation:
 
-- API key (Yahoo! JAPAN App ID) that you enter in extension settings.
-- Extension settings (for example, global enable/disable and demo mode).
+- Client ID (Yahoo! JAPAN Client ID) that you enter in extension settings.
+- Extension settings (for example, global enable/disable and offline mode).
 - Temporary run status data (progress/cancel state) while annotation runs.
 - Text fragments from the current web page that are selected for furigana conversion.
 
 ## 2. Where Data Is Stored
 
-- API key and extension settings are stored in `chrome.storage.sync` (your browser profile; may sync via your Chrome account if browser sync is enabled).
+- Client ID and extension settings are stored in `chrome.storage.sync` (your browser profile; may sync via your Chrome account if browser sync is enabled).
 - Temporary annotation status is stored in `chrome.storage.session` and is not persisted long-term.
 - YomiRuby does not operate its own backend server and does not store your browsing data on developer-controlled servers.
 
 ## 3. Third-Party API Use
 
-When annotation runs with a real API key, relevant text fragments are sent directly from your browser to Yahoo! JAPAN Language Processing API:
+When annotation runs with a real Client ID and offline mode is disabled, relevant text fragments are sent directly from your browser to Yahoo! JAPAN Language Processing API:
 
 - Endpoint used: `https://jlp.yahooapis.jp/FuriganaService/V2/furigana`
-- Data sent: text needed for furigana conversion, request metadata required by Yahoo API, and your App ID.
+- Data sent: text needed for furigana conversion, request metadata required by Yahoo API, and your Client ID.
+
+When offline mode is enabled, YomiRuby uses a bundled local dictionary and does not send page text to Yahoo! JAPAN for annotation.
 
 Your use of the Yahoo API is also subject to Yahoo! JAPAN’s own terms and privacy policies.
 
@@ -39,7 +41,7 @@ YomiRuby does not:
 
 ## 5. Permissions and Why They Are Needed
 
-- `storage`: save your API key and extension settings.
+- `storage`: save your Client ID and extension settings.
 - `tabs`: identify and control the active tab for annotation actions.
 - `scripting`: inject/run content scripts required to annotate pages.
 - Host permissions:
@@ -48,15 +50,15 @@ YomiRuby does not:
 
 ## 6. Data Retention and Deletion
 
-- You can delete the saved API key and settings from the extension options at any time.
+- You can delete the saved Client ID and settings from the extension options at any time.
 - Temporary session data is cleared automatically by browser/session lifecycle.
 - Uninstalling the extension removes extension-stored data from your browser profile.
 
 ## 7. Security Notes
 
-- No API key is hardcoded in source code.
+- No Client ID is hardcoded in source code.
 - API communication uses HTTPS.
-- You are responsible for keeping your own Yahoo App ID secure.
+- You are responsible for keeping your own Yahoo Client ID secure.
 
 ## 8. Changes to This Policy
 

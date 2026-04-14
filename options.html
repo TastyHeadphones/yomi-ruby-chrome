@@ -8,50 +8,51 @@
   </head>
   <body>
     <main class="container">
-      <h1>YomiRuby Settings</h1>
+      <h1 id="optionsTitle">YomiRuby Settings</h1>
 
+      <p class="description" id="optionsDescription"></p>
       <p class="description">
-        Enter your Yahoo! JAPAN API key (App ID) for FuriganaService. You can create one from
-        the
-        <a href="https://developer.yahoo.co.jp/" target="_blank" rel="noopener noreferrer">
-          Yahoo! JAPAN Developer portal
-        </a>.
+        <a
+          id="developerPortalLink"
+          href="https://developer.yahoo.co.jp/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Yahoo! JAPAN Developer Network
+        </a>
       </p>
 
-      <label for="apiKeyInput" class="field-label">Yahoo API Key (App ID)</label>
+      <label for="apiKeyInput" class="field-label" id="clientIdLabel">Yahoo Client ID</label>
       <input
         id="apiKeyInput"
         type="password"
-        placeholder="Paste your Yahoo App ID"
+        placeholder="Paste your Yahoo Client ID"
         autocomplete="off"
       >
 
       <label for="demoModeCheckbox" class="checkbox-row">
         <input id="demoModeCheckbox" type="checkbox">
-        <span>Enable demo mode when API key is missing</span>
+        <span id="offlineModeLabel">Offline mode (use local dictionary)</span>
       </label>
+      <p class="description" id="offlineModeHelp"></p>
 
       <div class="button-row">
-        <button id="testButton" type="button" class="secondary">Test API Key</button>
+        <button id="testButton" type="button" class="secondary">Test Client ID</button>
         <button id="saveButton" type="button">Save Settings</button>
       </div>
       <p id="feedback" role="status" aria-live="polite"></p>
 
       <section class="help">
-        <h2>How to get the API key</h2>
+        <h2 id="howToTitle">How to get the Client ID</h2>
         <ol>
-          <li>
-            Sign in to
-            <a href="https://developer.yahoo.co.jp/" target="_blank" rel="noopener noreferrer">
-              Yahoo! JAPAN Developer Network
-            </a>.
-          </li>
-          <li>Create an app and enable Japanese language API usage.</li>
-          <li>Copy the generated App ID and paste it above.</li>
+          <li id="step1"></li>
+          <li id="step2"></li>
+          <li id="step3"></li>
         </ol>
         <p>
-          Furigana API reference:
+          <span id="furiganaReferencePrefix">Furigana API reference:</span>
           <a
+            id="furiganaReferenceLink"
             href="https://developer.yahoo.co.jp/webapi/jlp/furigana/v2/furigana.html"
             target="_blank"
             rel="noopener noreferrer"
@@ -62,7 +63,8 @@
       </section>
     </main>
 
-    <script src="utils/constants.js"></script>
-    <script src="options.js"></script>
+      <script src="utils/constants.js"></script>
+      <script src="utils/i18n.js"></script>
+      <script src="options.js"></script>
   </body>
 </html>
