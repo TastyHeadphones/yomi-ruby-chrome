@@ -103,21 +103,50 @@
         background: #166534;
       }
       html[data-yomiruby-edit-mode='1'] ruby.yomiruby-ruby[data-yomiruby-annotated='1'] {
-        cursor: pointer;
         border-radius: 6px;
-        box-shadow: inset 0 -2px 0 rgba(14, 116, 144, 0.22);
+        box-shadow: inset 0 -2px 0 rgba(234, 179, 8, 0.28);
+      }
+      html[data-yomiruby-edit-mode='1']
+        ruby.yomiruby-ruby[data-yomiruby-annotated='1'] rt.yomiruby-rt {
+        cursor: pointer;
+        color: #854d0e;
+        background: rgba(254, 240, 138, 0.9);
+        border: 1px solid rgba(202, 138, 4, 0.52);
+        border-radius: 999px;
+        padding: 0.12em 0.46em;
+        margin-inline: 0.08em;
+        box-shadow: 0 2px 6px rgba(202, 138, 4, 0.14);
+        transition:
+          background-color 120ms ease,
+          box-shadow 120ms ease,
+          transform 120ms ease;
+      }
+      html[data-yomiruby-edit-mode='1']
+        ruby.yomiruby-ruby[data-yomiruby-annotated='1'] rt.yomiruby-rt:hover {
+        background: rgba(253, 224, 71, 0.96);
+        box-shadow: 0 4px 10px rgba(202, 138, 4, 0.18);
+        transform: translateY(-1px);
       }
       html[data-yomiruby-edit-mode='1']
         ruby.yomiruby-ruby[data-yomiruby-user-edited='1'][data-yomiruby-annotated='1'] {
-        background: rgba(250, 204, 21, 0.22);
+        background: rgba(187, 247, 208, 0.24);
         box-shadow:
-          inset 0 -2px 0 rgba(202, 138, 4, 0.4),
-          0 0 0 1px rgba(202, 138, 4, 0.28);
+          inset 0 -2px 0 rgba(22, 101, 52, 0.42),
+          0 0 0 1px rgba(22, 101, 52, 0.18);
       }
       html[data-yomiruby-edit-mode='1']
-        ruby.yomiruby-ruby[data-yomiruby-editing='1'][data-yomiruby-annotated='1'] {
-        background: rgba(14, 116, 144, 0.12);
-        box-shadow: 0 0 0 2px rgba(14, 116, 144, 0.4);
+        ruby.yomiruby-ruby[data-yomiruby-user-edited='1'][data-yomiruby-annotated='1'] rt.yomiruby-rt {
+        color: #166534;
+        background: rgba(187, 247, 208, 0.98);
+        border-color: rgba(22, 101, 52, 0.46);
+        box-shadow: 0 4px 12px rgba(22, 101, 52, 0.16);
+      }
+      html[data-yomiruby-edit-mode='1']
+        ruby.yomiruby-ruby[data-yomiruby-editing='1'][data-yomiruby-annotated='1'] rt.yomiruby-rt {
+        background: rgba(134, 239, 172, 1);
+        border-color: rgba(21, 128, 61, 0.58);
+        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.22);
+        transform: translateY(-1px);
       }
       #${EDIT_TOOLBAR_ID} {
         position: fixed;
@@ -1121,11 +1150,19 @@
       return;
     }
 
-    const ruby = target.closest(ANNOTATED_RUBY_SELECTOR);
-    if (ruby) {
+    const kana = target.closest("rt.yomiruby-rt");
+    if (kana) {
+      const ruby = kana.closest(ANNOTATED_RUBY_SELECTOR);
+      if (!ruby) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       openRubyEditor(ruby);
+      return;
+    }
+
+    if (target.closest(ANNOTATED_RUBY_SELECTOR)) {
       return;
     }
 

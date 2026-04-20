@@ -87,7 +87,7 @@
       content_cancel_requested: "Cancel requested...",
       content_annotation_already_running: "An annotation job is already running.",
       content_edit_mode_title: "Reading Editor",
-      content_edit_mode_hint: "Click any ruby reading on the page to change and save it for this page.",
+      content_edit_mode_hint: "Tap the yellow kana bubble to change and save that reading for this page.",
       content_edit_mode_empty: "No annotated readings are available on this page yet.",
       content_edit_mode_empty_hint: "Run annotation first, then click readings to edit them.",
       content_edit_mode_counts: "{{total}} readings on page | {{edited}} edited",
