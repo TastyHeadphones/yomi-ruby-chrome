@@ -4,6 +4,7 @@
   const toggle = document.getElementById("tabToggle");
   const toggleLabel = document.getElementById("toggleLabel");
   const annotateButton = document.getElementById("annotateBtn");
+  const editButton = document.getElementById("editBtn");
   const cancelButton = document.getElementById("cancelBtn");
   const kanaButton = document.getElementById("kanaBtn");
   const settingsButton = document.getElementById("settingsBtn");
@@ -13,6 +14,7 @@
   let pageSupported = false;
   let annotationRunning = false;
   let kanaHidden = false;
+  let editModeEnabled = false;
   let statusPollTimer = null;
 
   function t(key, vars = {}) {
@@ -27,6 +29,7 @@
   function setControlsEnabled(enabled) {
     toggle.disabled = !enabled;
     annotateButton.disabled = !enabled || annotationRunning;
+    editButton.disabled = !enabled || annotationRunning;
     kanaButton.disabled = !enabled || annotationRunning;
     cancelButton.disabled = !enabled || !annotationRunning;
     settingsButton.disabled = false;
@@ -42,6 +45,10 @@
     kanaButton.textContent = kanaHidden ? t("popup_show_kana") : t("popup_hide_kana");
   }
 
+  function updateEditButtonLabel() {
+    editButton.textContent = editModeEnabled ? t("popup_exit_edit_mode") : t("popup_edit_readings");
+  }
+
   function updateRunningUi(status) {
     annotationRunning = Boolean(status?.running);
     cancelButton.style.display = annotationRunning ? "block" : "none";
@@ -55,6 +62,7 @@
     } else {
       annotateButton.textContent = t("popup_run_annotation_now");
       updateKanaButtonLabel();
+      updateEditButtonLabel();
       const state = String(status?.state || "");
       if (state === "done") {
         setStatus(status?.meta || t("popup_annotation_completed"));
@@ -93,6 +101,7 @@
     stopStatusPolling();
     statusPollTimer = setInterval(() => {
       fetchAnnotationStatus().catch(() => {});
+      fetchEditModeState().catch(() => {});
     }, 500);
   }
 
@@ -110,6 +119,21 @@
     const enabled = Boolean(response?.enabled);
     toggle.checked = enabled;
     updateToggleLabel(enabled);
+  }
+
+  async function fetchEditModeState() {
+    if (typeof currentTabId !== "number") {
+      return;
+    }
+    const response = await chrome.runtime.sendMessage({
+      type: C.MESSAGE_TYPES.GET_EDIT_MODE_STATE,
+      payload: { tabId: currentTabId }
+    });
+    if (!response?.ok) {
+      return;
+    }
+    editModeEnabled = Boolean(response.editMode);
+    updateEditButtonLabel();
   }
 
   async function fetchKanaVisibility() {
@@ -131,7 +155,9 @@
     const tab = await getActiveTab();
     if (!tab || typeof tab.id !== "number") {
       pageSupported = false;
+      editModeEnabled = false;
       setControlsEnabled(false);
+      updateEditButtonLabel();
       setStatus(t("popup_no_active_tab"), true);
       return;
     }
@@ -139,7 +165,9 @@
     currentTabId = tab.id;
     pageSupported = /^(https?|file):/i.test(tab.url || "");
     if (!pageSupported) {
+      editModeEnabled = false;
       setControlsEnabled(false);
+      updateEditButtonLabel();
       setStatus(t("popup_page_cannot_be_annotated"), true);
       return;
     }
@@ -148,6 +176,7 @@
     await refreshGlobalState();
     await fetchAnnotationStatus();
     await fetchKanaVisibility();
+    await fetchEditModeState();
     startStatusPolling();
   }
 
@@ -170,6 +199,7 @@
     });
 
     await fetchAnnotationStatus();
+    await fetchEditModeState();
 
     if (!response?.ok) {
       const details = response?.details || response?.error || t("popup_annotation_failed");
@@ -189,6 +219,7 @@
     } else {
       setStatus(t("popup_annotation_completed"));
     }
+    await fetchEditModeState();
   }
 
   async function cancelAnnotation() {
@@ -205,6 +236,33 @@
     }
     setStatus(response?.details || t("popup_cancel_requested"));
     await fetchAnnotationStatus();
+  }
+
+  async function toggleEditMode() {
+    if (typeof currentTabId !== "number" || !pageSupported) {
+      setStatus(t("popup_no_target_page"), true);
+      return;
+    }
+    if (annotationRunning) {
+      setStatus(t("popup_cannot_edit_while_running"), true);
+      return;
+    }
+
+    const response = await chrome.runtime.sendMessage({
+      type: C.MESSAGE_TYPES.TOGGLE_EDIT_MODE,
+      payload: { tabId: currentTabId }
+    });
+    if (!response?.ok) {
+      setStatus(response?.details || t("popup_edit_mode_failed"), true);
+      return;
+    }
+
+    editModeEnabled = Boolean(response.editMode);
+    updateEditButtonLabel();
+    setStatus(
+      response?.details ||
+        (editModeEnabled ? t("popup_edit_mode_enabled") : t("popup_edit_mode_disabled"))
+    );
   }
 
   async function toggleKanaVisibility() {
@@ -252,6 +310,10 @@
     await runAnnotation("manual");
   });
 
+  editButton.addEventListener("click", async () => {
+    await toggleEditMode();
+  });
+
   cancelButton.addEventListener("click", async () => {
     await cancelAnnotation();
   });
@@ -276,6 +338,7 @@
     document.documentElement.lang = I18N?.locale || "en";
     document.title = t("app_name");
     annotateButton.textContent = t("popup_run_annotation_now");
+    updateEditButtonLabel();
     cancelButton.textContent = t("popup_cancel_running_job");
     updateKanaButtonLabel();
     settingsButton.textContent = t("popup_open_settings");

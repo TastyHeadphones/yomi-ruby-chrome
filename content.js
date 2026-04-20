@@ -14,11 +14,21 @@
   let annotationInProgress = false;
   let cancelRequested = false;
   let progressCleanupTimer = null;
+  let editModeEnabled = false;
+  let editToolbar = null;
+  let editStatusTimer = null;
+  let activeEditor = null;
+  let activeEditorTarget = null;
+  let pageOverrides = new Map();
 
   const PROGRESS_ID = "yomiruby-progress-overlay";
   const PROGRESS_BAR_ID = "yomiruby-progress-fill";
   const PROGRESS_TEXT_ID = "yomiruby-progress-text";
   const PROGRESS_META_ID = "yomiruby-progress-meta";
+  const EDIT_TOOLBAR_ID = "yomiruby-edit-toolbar";
+  const EDIT_TOOLBAR_META_ID = "yomiruby-edit-toolbar-meta";
+  const EDIT_TOOLBAR_STATUS_ID = "yomiruby-edit-toolbar-status";
+  const INLINE_EDITOR_ID = "yomiruby-inline-editor";
   const PARAGRAPH_SELECTOR =
     "p,li,dd,dt,blockquote,figcaption,caption,td,th,h1,h2,h3,h4,h5,h6";
   const ANNOTATED_RUBY_SELECTOR = "ruby.yomiruby-ruby[data-yomiruby-annotated='1']";
@@ -91,6 +101,125 @@
       }
       #${PROGRESS_ID}.done #${PROGRESS_BAR_ID} {
         background: #166534;
+      }
+      html[data-yomiruby-edit-mode='1'] ruby.yomiruby-ruby[data-yomiruby-annotated='1'] {
+        cursor: pointer;
+        border-radius: 6px;
+        box-shadow: inset 0 -2px 0 rgba(14, 116, 144, 0.22);
+      }
+      html[data-yomiruby-edit-mode='1']
+        ruby.yomiruby-ruby[data-yomiruby-user-edited='1'][data-yomiruby-annotated='1'] {
+        background: rgba(250, 204, 21, 0.22);
+        box-shadow:
+          inset 0 -2px 0 rgba(202, 138, 4, 0.4),
+          0 0 0 1px rgba(202, 138, 4, 0.28);
+      }
+      html[data-yomiruby-edit-mode='1']
+        ruby.yomiruby-ruby[data-yomiruby-editing='1'][data-yomiruby-annotated='1'] {
+        background: rgba(14, 116, 144, 0.12);
+        box-shadow: 0 0 0 2px rgba(14, 116, 144, 0.4);
+      }
+      #${EDIT_TOOLBAR_ID} {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        width: min(340px, calc(100vw - 32px));
+        border: 1px solid rgba(15, 23, 42, 0.14);
+        border-radius: 14px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.98));
+        box-shadow: 0 20px 44px rgba(15, 23, 42, 0.18);
+        color: #0f172a;
+        font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        padding: 12px;
+        z-index: 2147483647;
+      }
+      #${EDIT_TOOLBAR_ID} .yomi-edit-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 6px;
+      }
+      #${EDIT_TOOLBAR_ID} .yomi-edit-title {
+        font-size: 14px;
+        font-weight: 700;
+      }
+      #${EDIT_TOOLBAR_ID} .yomi-edit-hint {
+        color: #475569;
+        margin-bottom: 8px;
+      }
+      #${EDIT_TOOLBAR_META_ID} {
+        font-weight: 600;
+        color: #0f766e;
+        margin-bottom: 6px;
+      }
+      #${EDIT_TOOLBAR_STATUS_ID} {
+        min-height: 20px;
+        color: #334155;
+      }
+      #${EDIT_TOOLBAR_STATUS_ID}[data-error='1'] {
+        color: #b91c1c;
+      }
+      #${EDIT_TOOLBAR_ID} .yomi-edit-close {
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.88);
+        color: #0f172a;
+        min-width: 32px;
+        height: 32px;
+        padding: 0 10px;
+        cursor: pointer;
+        font: inherit;
+      }
+      #${INLINE_EDITOR_ID} {
+        position: fixed;
+        min-width: 240px;
+        max-width: min(320px, calc(100vw - 24px));
+        border: 1px solid rgba(15, 23, 42, 0.16);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.98);
+        box-shadow: 0 20px 48px rgba(15, 23, 42, 0.22);
+        color: #0f172a;
+        font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        padding: 12px;
+        z-index: 2147483647;
+      }
+      #${INLINE_EDITOR_ID} .yomi-edit-surface {
+        font-size: 14px;
+        font-weight: 700;
+        margin-bottom: 2px;
+      }
+      #${INLINE_EDITOR_ID} .yomi-edit-original {
+        color: #475569;
+        margin-bottom: 10px;
+      }
+      #${INLINE_EDITOR_ID} input {
+        width: 100%;
+        height: 38px;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        padding: 0 10px;
+        font: inherit;
+        margin-bottom: 10px;
+      }
+      #${INLINE_EDITOR_ID} .yomi-edit-actions {
+        display: flex;
+        gap: 8px;
+      }
+      #${INLINE_EDITOR_ID} button {
+        flex: 1;
+        border: 1px solid #0f766e;
+        border-radius: 10px;
+        background: #0f766e;
+        color: #ffffff;
+        cursor: pointer;
+        font: inherit;
+        padding: 8px 10px;
+      }
+      #${INLINE_EDITOR_ID} button[data-variant='secondary'] {
+        background: #ffffff;
+        color: #0f766e;
       }
     `;
     const root = document.head || document.documentElement;
@@ -255,6 +384,450 @@
     };
   }
 
+  function clearEditStatusTimer() {
+    if (editStatusTimer) {
+      clearTimeout(editStatusTimer);
+      editStatusTimer = null;
+    }
+  }
+
+  function hashText(value) {
+    let hash = 2166136261;
+    for (const char of String(value || "")) {
+      hash ^= char.codePointAt(0) || 0;
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+  }
+
+  function buildOverrideKey(sourceTextHash, surface, occurrenceIndex) {
+    return `${sourceTextHash}:${surface}:${occurrenceIndex}`;
+  }
+
+  function escapeHtml(value) {
+    return String(value || "").replace(/[&<>"']/g, (char) => {
+      switch (char) {
+        case "&":
+          return "&amp;";
+        case "<":
+          return "&lt;";
+        case ">":
+          return "&gt;";
+        case '"':
+          return "&quot;";
+        case "'":
+          return "&#39;";
+        default:
+          return char;
+      }
+    });
+  }
+
+  function countEditableRubies() {
+    return document.querySelectorAll(ANNOTATED_RUBY_SELECTOR).length;
+  }
+
+  function countEditedRubies() {
+    return document.querySelectorAll(
+      `${ANNOTATED_RUBY_SELECTOR}[data-yomiruby-user-edited='1']`
+    ).length;
+  }
+
+  function getEditModeState() {
+    return {
+      editMode: editModeEnabled,
+      editableCount: countEditableRubies(),
+      editedCount: countEditedRubies()
+    };
+  }
+
+  function ensureEditToolbar() {
+    if (editToolbar?.isConnected) {
+      return editToolbar;
+    }
+
+    editToolbar = document.createElement("div");
+    editToolbar.id = EDIT_TOOLBAR_ID;
+    editToolbar.innerHTML = `
+      <div class="yomi-edit-header">
+        <div class="yomi-edit-title"></div>
+        <button type="button" class="yomi-edit-close"></button>
+      </div>
+      <div class="yomi-edit-hint"></div>
+      <div id="${EDIT_TOOLBAR_META_ID}"></div>
+      <div id="${EDIT_TOOLBAR_STATUS_ID}"></div>
+    `;
+
+    editToolbar.querySelector(".yomi-edit-close")?.addEventListener("click", () => {
+      setEditMode(false).catch(() => {});
+    });
+
+    const root = document.body || document.documentElement;
+    if (root) {
+      root.appendChild(editToolbar);
+    }
+    return editToolbar;
+  }
+
+  function renderEditToolbar() {
+    if (!editModeEnabled) {
+      return;
+    }
+
+    const toolbar = ensureEditToolbar();
+    const state = getEditModeState();
+    const title = toolbar.querySelector(".yomi-edit-title");
+    const hint = toolbar.querySelector(".yomi-edit-hint");
+    const closeButton = toolbar.querySelector(".yomi-edit-close");
+    const meta = toolbar.querySelector(`#${EDIT_TOOLBAR_META_ID}`);
+
+    if (title) {
+      title.textContent = t("content_edit_mode_title");
+    }
+    if (hint) {
+      hint.textContent =
+        state.editableCount > 0
+          ? t("content_edit_mode_hint")
+          : t("content_edit_mode_empty_hint");
+    }
+    if (closeButton) {
+      closeButton.textContent = t("content_exit_edit_mode");
+    }
+    if (meta) {
+      meta.textContent =
+        state.editableCount > 0
+          ? t("content_edit_mode_counts", {
+              total: state.editableCount,
+              edited: state.editedCount
+            })
+          : t("content_edit_mode_empty");
+    }
+  }
+
+  function setEditStatus(message, isError = false, timeoutMs = 2600) {
+    if (!editModeEnabled) {
+      return;
+    }
+
+    const toolbar = ensureEditToolbar();
+    const status = toolbar.querySelector(`#${EDIT_TOOLBAR_STATUS_ID}`);
+    if (!status) {
+      return;
+    }
+
+    clearEditStatusTimer();
+    status.textContent = message || "";
+    if (isError) {
+      status.setAttribute("data-error", "1");
+    } else {
+      status.removeAttribute("data-error");
+    }
+
+    if (message && timeoutMs > 0) {
+      editStatusTimer = setTimeout(() => {
+        if (status.textContent === message) {
+          status.textContent = "";
+          status.removeAttribute("data-error");
+        }
+      }, timeoutMs);
+    }
+  }
+
+  async function refreshPageOverrides() {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: C.MESSAGE_TYPES.GET_PAGE_OVERRIDES
+      });
+      if (!response?.ok) {
+        pageOverrides = new Map();
+        return false;
+      }
+      pageOverrides = new Map(Object.entries(response.overrides || {}));
+      return true;
+    } catch (_error) {
+      pageOverrides = new Map();
+      return false;
+    }
+  }
+
+  function prepareTokensForRender(sourceText, tokens) {
+    const sourceTextHash = hashText(sourceText);
+    const occurrenceBySurface = new Map();
+
+    return (Array.isArray(tokens) ? tokens : []).map((token) => {
+      const surface = typeof token?.surface === "string" ? token.surface : "";
+      const originalFurigana =
+        typeof token?.furigana === "string" ? token.furigana.trim() : "";
+      const occurrenceIndex = occurrenceBySurface.get(surface) || 0;
+      occurrenceBySurface.set(surface, occurrenceIndex + 1);
+
+      const overrideKey = buildOverrideKey(sourceTextHash, surface, occurrenceIndex);
+      const savedOverride = pageOverrides.get(overrideKey);
+      const customFurigana = savedOverride?.customFurigana
+        ? String(savedOverride.customFurigana).trim()
+        : originalFurigana;
+
+      return {
+        ...token,
+        furigana: customFurigana,
+        originalFurigana,
+        sourceTextHash,
+        occurrenceIndex,
+        overrideKey,
+        userEdited: Boolean(savedOverride && customFurigana && customFurigana !== originalFurigana)
+      };
+    });
+  }
+
+  function closeRubyEditor() {
+    if (activeEditorTarget?.isConnected) {
+      activeEditorTarget.removeAttribute("data-yomiruby-editing");
+    }
+    activeEditorTarget = null;
+
+    if (activeEditor?.isConnected) {
+      activeEditor.remove();
+    }
+    activeEditor = null;
+  }
+
+  function updateRubyReadingElement(ruby, reading, userEdited) {
+    const rt = ruby.querySelector("rt.yomiruby-rt");
+    if (rt) {
+      rt.textContent = reading;
+    }
+    ruby.setAttribute("data-yomiruby-current-reading", reading);
+    if (userEdited) {
+      ruby.setAttribute("data-yomiruby-user-edited", "1");
+    } else {
+      ruby.removeAttribute("data-yomiruby-user-edited");
+    }
+  }
+
+  function positionInlineEditor(ruby, editor) {
+    const rubyRect = ruby.getBoundingClientRect();
+    const editorRect = editor.getBoundingClientRect();
+    const margin = 12;
+
+    let top = rubyRect.bottom + 10;
+    if (top + editorRect.height > window.innerHeight - margin) {
+      top = rubyRect.top - editorRect.height - 10;
+    }
+
+    let left = rubyRect.left + rubyRect.width / 2 - editorRect.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - editorRect.width - margin));
+    top = Math.max(margin, Math.min(top, window.innerHeight - editorRect.height - margin));
+
+    editor.style.top = `${top}px`;
+    editor.style.left = `${left}px`;
+  }
+
+  function openRubyEditor(ruby) {
+    if (!editModeEnabled || !ruby?.isConnected) {
+      return;
+    }
+
+    closeRubyEditor();
+    activeEditorTarget = ruby;
+    ruby.setAttribute("data-yomiruby-editing", "1");
+
+    const surface = ruby.getAttribute("data-yomiruby-surface") || "";
+    const originalReading =
+      ruby.getAttribute("data-yomiruby-original-reading") ||
+      ruby.getAttribute("data-yomiruby-current-reading") ||
+      ruby.querySelector("rt.yomiruby-rt")?.textContent ||
+      "";
+    const currentReading =
+      ruby.getAttribute("data-yomiruby-current-reading") || originalReading;
+
+    const editor = document.createElement("div");
+    editor.id = INLINE_EDITOR_ID;
+    editor.innerHTML = `
+      <div class="yomi-edit-surface">${escapeHtml(surface)}</div>
+      <div class="yomi-edit-original">${escapeHtml(
+        t("content_original_reading_label", { reading: originalReading || "—" })
+      )}</div>
+      <input type="text" value="${escapeHtml(currentReading)}" spellcheck="false">
+      <div class="yomi-edit-actions">
+        <button type="button" data-action="save">${escapeHtml(t("content_save_reading"))}</button>
+        <button type="button" data-action="reset" data-variant="secondary">${escapeHtml(
+          t("content_reset_reading")
+        )}</button>
+        <button type="button" data-action="cancel" data-variant="secondary">${escapeHtml(
+          t("content_cancel_edit")
+        )}</button>
+      </div>
+    `;
+
+    const root = document.body || document.documentElement;
+    if (root) {
+      root.appendChild(editor);
+    }
+    activeEditor = editor;
+    positionInlineEditor(ruby, editor);
+
+    const input = editor.querySelector("input");
+    const saveButton = editor.querySelector("[data-action='save']");
+    const resetButton = editor.querySelector("[data-action='reset']");
+    const cancelButton = editor.querySelector("[data-action='cancel']");
+
+    saveButton?.addEventListener("click", () => {
+      persistRubyReading(ruby, input?.value || "").catch(() => {});
+    });
+    resetButton?.addEventListener("click", () => {
+      resetRubyReading(ruby).catch(() => {});
+    });
+    cancelButton?.addEventListener("click", () => {
+      closeRubyEditor();
+    });
+    input?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        persistRubyReading(ruby, input.value || "").catch(() => {});
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        closeRubyEditor();
+      }
+    });
+
+    input?.focus();
+    input?.select();
+  }
+
+  async function persistRubyReading(ruby, nextReading) {
+    if (annotationInProgress) {
+      setEditStatus(t("content_edit_mode_busy"), true, 3200);
+      return false;
+    }
+
+    const trimmed = String(nextReading || "").trim();
+    if (!trimmed) {
+      setEditStatus(t("content_edit_requires_reading"), true, 3200);
+      return false;
+    }
+
+    const overrideKey = String(ruby.getAttribute("data-yomiruby-override-key") || "").trim();
+    const surface = String(ruby.getAttribute("data-yomiruby-surface") || "").trim();
+    const sourceTextHash = String(ruby.getAttribute("data-yomiruby-source-hash") || "").trim();
+    const occurrenceIndex = Number(ruby.getAttribute("data-yomiruby-occurrence") || "0");
+    const originalReading =
+      String(
+        ruby.getAttribute("data-yomiruby-original-reading") ||
+          ruby.getAttribute("data-yomiruby-current-reading") ||
+          ""
+      ).trim();
+
+    if (!overrideKey || !surface || !sourceTextHash) {
+      setEditStatus(t("content_edit_save_failed"), true, 3200);
+      return false;
+    }
+
+    if (trimmed === originalReading) {
+      return resetRubyReading(ruby);
+    }
+
+    const response = await chrome.runtime.sendMessage({
+      type: C.MESSAGE_TYPES.SAVE_PAGE_OVERRIDE,
+      payload: {
+        overrideKey,
+        override: {
+          surface,
+          sourceTextHash,
+          occurrenceIndex: Number.isFinite(occurrenceIndex) ? occurrenceIndex : 0,
+          originalFurigana: originalReading,
+          customFurigana: trimmed
+        }
+      }
+    });
+
+    if (!response?.ok) {
+      setEditStatus(response?.details || t("content_edit_save_failed"), true, 3200);
+      return false;
+    }
+
+    pageOverrides.set(overrideKey, response.override || {});
+    updateRubyReadingElement(ruby, trimmed, true);
+    renderEditToolbar();
+    setEditStatus(t("content_reading_saved"));
+    closeRubyEditor();
+    return true;
+  }
+
+  async function resetRubyReading(ruby) {
+    if (annotationInProgress) {
+      setEditStatus(t("content_edit_mode_busy"), true, 3200);
+      return false;
+    }
+
+    const overrideKey = String(ruby.getAttribute("data-yomiruby-override-key") || "").trim();
+    const originalReading =
+      String(
+        ruby.getAttribute("data-yomiruby-original-reading") ||
+          ruby.getAttribute("data-yomiruby-current-reading") ||
+          ""
+      ).trim();
+
+    if (overrideKey) {
+      const response = await chrome.runtime.sendMessage({
+        type: C.MESSAGE_TYPES.DELETE_PAGE_OVERRIDE,
+        payload: { overrideKey }
+      });
+      if (!response?.ok) {
+        setEditStatus(response?.details || t("content_edit_save_failed"), true, 3200);
+        return false;
+      }
+      pageOverrides.delete(overrideKey);
+    }
+
+    updateRubyReadingElement(ruby, originalReading, false);
+    renderEditToolbar();
+    setEditStatus(t("content_reading_reset"));
+    closeRubyEditor();
+    return true;
+  }
+
+  async function setEditMode(enabled) {
+    if (annotationInProgress) {
+      return {
+        ok: false,
+        error: C.ERROR_CODES.BUSY,
+        details: t("content_edit_mode_busy")
+      };
+    }
+
+    if (typeof I18N?.init === "function") {
+      await I18N.init();
+    }
+    ensureAnnotationStyle();
+
+    if (enabled) {
+      await refreshPageOverrides();
+      editModeEnabled = true;
+      document.documentElement?.setAttribute("data-yomiruby-edit-mode", "1");
+      renderEditToolbar();
+      setEditStatus(
+        countEditableRubies() > 0 ? t("content_edit_mode_enabled") : t("content_edit_mode_empty_hint"),
+        false,
+        3200
+      );
+    } else {
+      editModeEnabled = false;
+      document.documentElement?.removeAttribute("data-yomiruby-edit-mode");
+      clearEditStatusTimer();
+      closeRubyEditor();
+      if (editToolbar?.isConnected) {
+        editToolbar.remove();
+      }
+      editToolbar = null;
+    }
+
+    return {
+      ok: true,
+      ...getEditModeState(),
+      details: enabled ? t("content_edit_mode_enabled") : t("content_edit_mode_disabled")
+    };
+  }
+
   async function annotateParagraph(paragraph) {
     let scanned = 0;
     let replacedNodes = 0;
@@ -318,7 +891,8 @@
           continue;
         }
 
-        const built = Ruby.buildAnnotatedFragment(document, node.nodeValue, result.tokens || []);
+        const preparedTokens = prepareTokensForRender(node.nodeValue, result.tokens || []);
+        const built = Ruby.buildAnnotatedFragment(document, node.nodeValue, preparedTokens);
         if (!built.changed) {
           skipped += 1;
           continue;
@@ -352,7 +926,9 @@
     annotationInProgress = true;
     cancelRequested = false;
     clearProgressCleanupTimer();
+    closeRubyEditor();
     ensureAnnotationStyle();
+    await refreshPageOverrides();
     const annotationEngine = String(options.annotationEngine || "");
     const localDictMode = annotationEngine === C.ANNOTATION_ENGINES.LOCAL_DICT;
 
@@ -507,6 +1083,7 @@
         t("content_annotation_completed"),
         `scanned ${totalScanned}, updated ${totalReplacedNodes}, ruby ${totalAnnotatedTokens}`
       );
+      renderEditToolbar();
 
       return {
         ok: true,
@@ -526,7 +1103,45 @@
       };
     } finally {
       annotationInProgress = false;
+      renderEditToolbar();
     }
+  }
+
+  function handleDocumentClick(event) {
+    if (!editModeEnabled) {
+      return;
+    }
+
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) {
+      closeRubyEditor();
+      return;
+    }
+    if (editToolbar?.contains(target) || activeEditor?.contains(target)) {
+      return;
+    }
+
+    const ruby = target.closest(ANNOTATED_RUBY_SELECTOR);
+    if (ruby) {
+      event.preventDefault();
+      event.stopPropagation();
+      openRubyEditor(ruby);
+      return;
+    }
+
+    closeRubyEditor();
+  }
+
+  function handleDocumentKeydown(event) {
+    if (!editModeEnabled || event.key !== "Escape") {
+      return;
+    }
+    event.preventDefault();
+    if (activeEditor) {
+      closeRubyEditor();
+      return;
+    }
+    setEditMode(false).catch(() => {});
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -541,6 +1156,16 @@
       emitRuntimeProgress("canceling", 0, t("content_cancel_requested"), "", true);
       sendResponse({ ok: true });
       return;
+    }
+
+    if (type === C.MESSAGE_TYPES.GET_EDIT_MODE_STATE) {
+      sendResponse({ ok: true, ...getEditModeState() });
+      return;
+    }
+
+    if (type === C.MESSAGE_TYPES.TOGGLE_EDIT_MODE) {
+      setEditMode(!editModeEnabled).then(sendResponse);
+      return true;
     }
 
     if (type === C.MESSAGE_TYPES.GET_KANA_VISIBILITY) {
@@ -572,6 +1197,19 @@
     if (type === C.MESSAGE_TYPES.ANNOTATE_PAGE) {
       annotatePage(message?.payload || {}).then(sendResponse);
       return true;
+    }
+  });
+
+  document.addEventListener("click", handleDocumentClick, true);
+  document.addEventListener("keydown", handleDocumentKeydown, true);
+  window.addEventListener("scroll", () => {
+    if (activeEditor) {
+      closeRubyEditor();
+    }
+  }, true);
+  window.addEventListener("resize", () => {
+    if (activeEditor) {
+      closeRubyEditor();
     }
   });
 })();

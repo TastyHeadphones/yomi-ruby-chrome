@@ -204,6 +204,22 @@ async function handleMessage(message, sender) {
       return { ok: true, status };
     }
 
+    case C.MESSAGE_TYPES.GET_EDIT_MODE_STATE: {
+      const tabId = Number(payload.tabId);
+      if (!Number.isInteger(tabId)) {
+        return { ok: false, error: C.ERROR_CODES.INVALID_RESPONSE, details: "tabId is required." };
+      }
+      return getEditModeStateOnTab(tabId);
+    }
+
+    case C.MESSAGE_TYPES.TOGGLE_EDIT_MODE: {
+      const tabId = Number(payload.tabId);
+      if (!Number.isInteger(tabId)) {
+        return { ok: false, error: C.ERROR_CODES.INVALID_RESPONSE, details: "tabId is required." };
+      }
+      return toggleEditModeOnTab(tabId);
+    }
+
     case C.MESSAGE_TYPES.ANNOTATION_PROGRESS: {
       const tabId = Number(payload.tabId || sender?.tab?.id);
       if (!Number.isInteger(tabId)) {
@@ -229,6 +245,34 @@ async function handleMessage(message, sender) {
     case C.MESSAGE_TYPES.ANNOTATE_TEXT_BATCH: {
       const texts = Array.isArray(payload.texts) ? payload.texts : [];
       return annotateTextBatch(texts, sender);
+    }
+
+    case C.MESSAGE_TYPES.GET_PAGE_OVERRIDES: {
+      return getPageOverridesForUrl(sender?.tab?.url || "");
+    }
+
+    case C.MESSAGE_TYPES.SAVE_PAGE_OVERRIDE: {
+      const overrideKey = String(payload.overrideKey || "").trim();
+      if (!overrideKey) {
+        return {
+          ok: false,
+          error: C.ERROR_CODES.INVALID_RESPONSE,
+          details: "overrideKey is required."
+        };
+      }
+      return savePageOverrideForUrl(sender?.tab?.url || "", overrideKey, payload.override || {});
+    }
+
+    case C.MESSAGE_TYPES.DELETE_PAGE_OVERRIDE: {
+      const overrideKey = String(payload.overrideKey || "").trim();
+      if (!overrideKey) {
+        return {
+          ok: false,
+          error: C.ERROR_CODES.INVALID_RESPONSE,
+          details: "overrideKey is required."
+        };
+      }
+      return deletePageOverrideForUrl(sender?.tab?.url || "", overrideKey);
     }
 
     case C.MESSAGE_TYPES.TEST_CLIENT_ID:
@@ -346,6 +390,82 @@ async function updateAnnotationStatus(tabId, patch) {
   };
   await chrome.storage.session.set({ [key]: next });
   return next;
+}
+
+function normalizePageUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (!isSupportedUrl(parsed.href)) {
+      return "";
+    }
+    return `${parsed.origin}${parsed.pathname}${parsed.search}`;
+  } catch (_error) {
+    return "";
+  }
+}
+
+function pageOverrideStorageKey(url) {
+  const normalizedUrl = normalizePageUrl(url);
+  if (!normalizedUrl) {
+    return "";
+  }
+  return `${C.LOCAL_KEYS.PAGE_OVERRIDE_PREFIX}${normalizedUrl}`;
+}
+
+async function getPageOverridesForUrl(url) {
+  const storageKey = pageOverrideStorageKey(url);
+  if (!storageKey) {
+    return { ok: false, error: C.ERROR_CODES.UNSUPPORTED_TAB, details: t("popup_no_target_page") };
+  }
+  const data = await chrome.storage.local.get([storageKey]);
+  return {
+    ok: true,
+    pageKey: storageKey,
+    overrides: data[storageKey] || {}
+  };
+}
+
+async function savePageOverrideForUrl(url, overrideKey, override) {
+  const storageKey = pageOverrideStorageKey(url);
+  if (!storageKey) {
+    return { ok: false, error: C.ERROR_CODES.UNSUPPORTED_TAB, details: t("popup_no_target_page") };
+  }
+
+  const data = await chrome.storage.local.get([storageKey]);
+  const overrides = data[storageKey] || {};
+  overrides[overrideKey] = {
+    surface: String(override.surface || ""),
+    sourceTextHash: String(override.sourceTextHash || ""),
+    occurrenceIndex:
+      Number.isInteger(override.occurrenceIndex) && override.occurrenceIndex >= 0
+        ? override.occurrenceIndex
+        : 0,
+    originalFurigana: String(override.originalFurigana || ""),
+    customFurigana: String(override.customFurigana || "").trim(),
+    updatedAt: Date.now()
+  };
+
+  await chrome.storage.local.set({ [storageKey]: overrides });
+  return { ok: true, override: overrides[overrideKey] };
+}
+
+async function deletePageOverrideForUrl(url, overrideKey) {
+  const storageKey = pageOverrideStorageKey(url);
+  if (!storageKey) {
+    return { ok: false, error: C.ERROR_CODES.UNSUPPORTED_TAB, details: t("popup_no_target_page") };
+  }
+
+  const data = await chrome.storage.local.get([storageKey]);
+  const overrides = data[storageKey] || {};
+  delete overrides[overrideKey];
+
+  if (Object.keys(overrides).length > 0) {
+    await chrome.storage.local.set({ [storageKey]: overrides });
+  } else {
+    await chrome.storage.local.remove([storageKey]);
+  }
+
+  return { ok: true };
 }
 
 async function setGlobalEnabled(enabled) {
@@ -615,6 +735,86 @@ async function getKanaVisibilityOnTab(tabId) {
         ok: false,
         error: response?.error || C.ERROR_CODES.INVALID_RESPONSE,
         details: response?.details || t("content_kana_visibility_failed")
+      };
+    }
+    return response;
+  } catch (error) {
+    return {
+      ok: false,
+      error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
+      details: error?.message || String(error)
+    };
+  }
+}
+
+async function getEditModeStateOnTab(tabId) {
+  const tab = await chrome.tabs.get(tabId);
+  if (!tab || !isSupportedUrl(tab.url || "")) {
+    return {
+      ok: false,
+      error: C.ERROR_CODES.UNSUPPORTED_TAB,
+      details: t("popup_no_target_page")
+    };
+  }
+
+  const injected = await ensureContentScript(tabId);
+  if (!injected) {
+    return {
+      ok: false,
+      error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
+      details: t("content_annotation_failed")
+    };
+  }
+
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: C.MESSAGE_TYPES.GET_EDIT_MODE_STATE
+    });
+    if (!response?.ok) {
+      return {
+        ok: false,
+        error: response?.error || C.ERROR_CODES.INVALID_RESPONSE,
+        details: response?.details || t("content_annotation_failed")
+      };
+    }
+    return response;
+  } catch (error) {
+    return {
+      ok: false,
+      error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
+      details: error?.message || String(error)
+    };
+  }
+}
+
+async function toggleEditModeOnTab(tabId) {
+  const tab = await chrome.tabs.get(tabId);
+  if (!tab || !isSupportedUrl(tab.url || "")) {
+    return {
+      ok: false,
+      error: C.ERROR_CODES.UNSUPPORTED_TAB,
+      details: t("popup_no_target_page")
+    };
+  }
+
+  const injected = await ensureContentScript(tabId);
+  if (!injected) {
+    return {
+      ok: false,
+      error: C.ERROR_CODES.CONTENT_SCRIPT_UNAVAILABLE,
+      details: t("content_annotation_failed")
+    };
+  }
+
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: C.MESSAGE_TYPES.TOGGLE_EDIT_MODE
+    });
+    if (!response?.ok) {
+      return {
+        ok: false,
+        error: response?.error || C.ERROR_CODES.INVALID_RESPONSE,
+        details: response?.details || t("content_annotation_failed")
       };
     }
     return response;

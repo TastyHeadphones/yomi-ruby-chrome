@@ -8,7 +8,16 @@
     return tokens
       .map((token) => ({
         surface: typeof token?.surface === "string" ? token.surface : "",
-        furigana: typeof token?.furigana === "string" ? token.furigana.trim() : ""
+        furigana: typeof token?.furigana === "string" ? token.furigana.trim() : "",
+        originalFurigana:
+          typeof token?.originalFurigana === "string" ? token.originalFurigana.trim() : "",
+        sourceTextHash: typeof token?.sourceTextHash === "string" ? token.sourceTextHash : "",
+        occurrenceIndex:
+          Number.isInteger(token?.occurrenceIndex) && token.occurrenceIndex >= 0
+            ? token.occurrenceIndex
+            : 0,
+        overrideKey: typeof token?.overrideKey === "string" ? token.overrideKey : "",
+        userEdited: token?.userEdited === true
       }))
       .filter((token) => token.surface.length > 0);
   }
@@ -23,11 +32,28 @@
     return surface.replace(/\s+/g, "") !== furigana.replace(/\s+/g, "");
   }
 
-  function createRubyElement(doc, surface, furigana) {
+  function createRubyElement(doc, surface, furigana, metadata = {}) {
     const ruby = doc.createElement("ruby");
     ruby.className = "yomiruby-ruby";
     ruby.setAttribute("data-yomiruby-annotated", "1");
     ruby.setAttribute("data-yomiruby-surface", surface);
+    ruby.setAttribute("data-yomiruby-current-reading", furigana);
+
+    if (typeof metadata.originalFurigana === "string" && metadata.originalFurigana) {
+      ruby.setAttribute("data-yomiruby-original-reading", metadata.originalFurigana);
+    }
+    if (typeof metadata.sourceTextHash === "string" && metadata.sourceTextHash) {
+      ruby.setAttribute("data-yomiruby-source-hash", metadata.sourceTextHash);
+    }
+    if (typeof metadata.overrideKey === "string" && metadata.overrideKey) {
+      ruby.setAttribute("data-yomiruby-override-key", metadata.overrideKey);
+    }
+    if (Number.isInteger(metadata.occurrenceIndex) && metadata.occurrenceIndex >= 0) {
+      ruby.setAttribute("data-yomiruby-occurrence", String(metadata.occurrenceIndex));
+    }
+    if (metadata.userEdited) {
+      ruby.setAttribute("data-yomiruby-user-edited", "1");
+    }
 
     const rt = doc.createElement("rt");
     rt.className = "yomiruby-rt";
@@ -46,37 +72,45 @@
   }
 
   function fallbackBuildByDictionary(doc, text, tokens) {
-    const readingMap = new Map();
+    const tokenMap = new Map();
     for (const token of tokens) {
       if (shouldCreateRuby(token.surface, token.furigana)) {
-        readingMap.set(token.surface, token.furigana);
+        tokenMap.set(token.surface, token);
       }
     }
 
     const fragment = doc.createDocumentFragment();
-    if (readingMap.size === 0) {
+    if (tokenMap.size === 0) {
       fragment.appendChild(doc.createTextNode(text));
       return { fragment, changed: false, annotatedCount: 0 };
     }
 
-    const dictionarySurfaces = [...readingMap.keys()].sort((a, b) => b.length - a.length);
+    const dictionarySurfaces = [...tokenMap.keys()].sort((a, b) => b.length - a.length);
     let changed = false;
     let annotatedCount = 0;
     let index = 0;
 
     while (index < text.length) {
       let matchedSurface = "";
-      let matchedReading = "";
+      let matchedToken = null;
       for (const surface of dictionarySurfaces) {
         if (text.startsWith(surface, index)) {
           matchedSurface = surface;
-          matchedReading = readingMap.get(surface) || "";
+          matchedToken = tokenMap.get(surface) || null;
           break;
         }
       }
 
-      if (matchedSurface) {
-        fragment.appendChild(createRubyElement(doc, matchedSurface, matchedReading));
+      if (matchedSurface && matchedToken) {
+        fragment.appendChild(
+          createRubyElement(doc, matchedSurface, matchedToken.furigana, {
+            originalFurigana: matchedToken.originalFurigana || matchedToken.furigana,
+            sourceTextHash: matchedToken.sourceTextHash,
+            occurrenceIndex: matchedToken.occurrenceIndex,
+            overrideKey: matchedToken.overrideKey,
+            userEdited: matchedToken.userEdited
+          })
+        );
         index += matchedSurface.length;
         changed = true;
         annotatedCount += 1;
@@ -121,7 +155,15 @@
       }
 
       if (shouldCreateRuby(token.surface, token.furigana)) {
-        fragment.appendChild(createRubyElement(doc, token.surface, token.furigana));
+        fragment.appendChild(
+          createRubyElement(doc, token.surface, token.furigana, {
+            originalFurigana: token.originalFurigana || token.furigana,
+            sourceTextHash: token.sourceTextHash,
+            occurrenceIndex: token.occurrenceIndex,
+            overrideKey: token.overrideKey,
+            userEdited: token.userEdited
+          })
+        );
         changed = true;
         annotatedCount += 1;
       } else {

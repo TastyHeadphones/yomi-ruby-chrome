@@ -7,69 +7,97 @@
     <link rel="stylesheet" href="options.css">
   </head>
   <body>
-    <main class="container">
-      <h1 id="optionsTitle">YomiRuby Settings</h1>
+    <main class="page">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">YomiRuby</p>
+          <h1 id="optionsTitle">YomiRuby Settings</h1>
+          <p class="description hero-description" id="optionsDescription"></p>
+        </div>
+        <div class="hero-card">
+          <div class="hero-card-label" id="heroCardLabel">Furigana</div>
+          <div class="hero-card-title" id="heroCardTitle">Page annotations with page-level correction support</div>
+        </div>
+      </section>
 
-      <p class="description" id="optionsDescription"></p>
-      <p class="description">
-        <a
-          id="developerPortalLink"
-          href="https://developer.yahoo.co.jp/"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Yahoo! JAPAN Developer Network
-        </a>
-      </p>
+      <section class="panel-grid">
+        <section class="panel">
+          <div class="panel-header">
+            <h2 id="interfaceSectionTitle">Interface</h2>
+            <p class="description" id="interfaceSectionDescription"></p>
+          </div>
 
-      <label for="uiLanguageSelect" class="field-label" id="uiLanguageLabel">UI language</label>
-      <select id="uiLanguageSelect"></select>
-      <p class="description" id="uiLanguageHelp"></p>
+          <label for="uiLanguageSelect" class="field-label" id="uiLanguageLabel">UI language</label>
+          <select id="uiLanguageSelect"></select>
+          <p class="description compact" id="uiLanguageHelp"></p>
+          <p id="languageFeedback" class="feedback" role="status" aria-live="polite"></p>
+        </section>
 
-      <label for="apiKeyInput" class="field-label" id="clientIdLabel">Yahoo Client ID</label>
-      <input
-        id="apiKeyInput"
-        type="password"
-        placeholder="Paste your Yahoo Client ID"
-        autocomplete="off"
-      >
+        <section class="panel">
+          <div class="panel-header">
+            <h2 id="annotationSectionTitle">Annotation</h2>
+            <p class="description" id="annotationSectionDescription"></p>
+          </div>
 
-      <label for="annotationModeSelect" class="field-label" id="annotationModeLabel">Annotation mode</label>
-      <select id="annotationModeSelect">
-        <option value="yahoo_api">Yahoo API (Client ID required)</option>
-        <option value="local_dict">Local dictionary (offline)</option>
-      </select>
-      <p class="description" id="annotationModeHelp"></p>
+          <label for="annotationModeSelect" class="field-label" id="annotationModeLabel">Annotation mode</label>
+          <select id="annotationModeSelect">
+            <option value="yahoo_api">Yahoo API (Client ID required)</option>
+            <option value="local_dict">Local dictionary (offline)</option>
+          </select>
+          <p class="description compact" id="annotationModeHelp"></p>
 
-      <div class="button-row">
-        <button id="testButton" type="button" class="secondary">Test Client ID</button>
-        <button id="saveButton" type="button">Save Settings</button>
-      </div>
-      <p id="feedback" role="status" aria-live="polite"></p>
-
-      <section class="help">
-        <h2 id="howToTitle">How to get the Client ID</h2>
-        <ol>
-          <li id="step1"></li>
-          <li id="step2"></li>
-          <li id="step3"></li>
-        </ol>
-        <p>
-          <span id="furiganaReferencePrefix">Furigana API reference:</span>
-          <a
-            id="furiganaReferenceLink"
-            href="https://developer.yahoo.co.jp/webapi/jlp/furigana/v2/furigana.html"
-            target="_blank"
-            rel="noopener noreferrer"
+          <label for="apiKeyInput" class="field-label" id="clientIdLabel">Yahoo Client ID</label>
+          <input
+            id="apiKeyInput"
+            type="password"
+            placeholder="Paste your Yahoo Client ID"
+            autocomplete="off"
           >
-            FuriganaService V2
-          </a>
-        </p>
+
+          <div class="button-row">
+            <button id="testButton" type="button" class="secondary">Test Client ID</button>
+            <button id="saveButton" type="button">Save Settings</button>
+          </div>
+          <p id="feedback" class="feedback" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="panel help-panel">
+          <div class="panel-header">
+            <h2 id="howToTitle">How to get the Client ID</h2>
+            <p class="description compact">
+              <a
+                id="developerPortalLink"
+                href="https://developer.yahoo.co.jp/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Yahoo! JAPAN Developer Network
+              </a>
+            </p>
+          </div>
+
+          <ol class="steps">
+            <li id="step1"></li>
+            <li id="step2"></li>
+            <li id="step3"></li>
+          </ol>
+          <p class="description compact">
+            <span id="furiganaReferencePrefix">Furigana API reference:</span>
+            <a
+              id="furiganaReferenceLink"
+              href="https://developer.yahoo.co.jp/webapi/jlp/furigana/v2/furigana.html"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              FuriganaService V2
+            </a>
+          </p>
+        </section>
       </section>
     </main>
 
-      <script src="utils/constants.js"></script>
-      <script src="utils/i18n.js"></script>
-      <script src="options.js"></script>
+    <script src="utils/constants.js"></script>
+    <script src="utils/i18n.js"></script>
+    <script src="options.js"></script>
   </body>
 </html>
