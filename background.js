@@ -945,13 +945,20 @@ async function annotateTextBatch(texts) {
     };
   }
 
+  let dictionaryIndex = null;
+  if (settings.annotationEngine !== C.ANNOTATION_ENGINES.YAHOO_API) {
+    dictionaryIndex = await getLocalDictionaryIndex();
+  }
+
   const uniqueTexts = [...new Set(normalizedTexts)];
   const resultByText = new Map();
 
-  for (const text of uniqueTexts) {
-    const result = await annotateSingleText(text, settings);
-    resultByText.set(text, result);
-  }
+  await Promise.all(
+    uniqueTexts.map(async (text) => {
+      const result = await annotateSingleText(text, settings, dictionaryIndex);
+      resultByText.set(text, result);
+    })
+  );
 
   const firstErrorResult = uniqueTexts
     .map((text) => resultByText.get(text))
@@ -970,7 +977,7 @@ async function annotateTextBatch(texts) {
   };
 }
 
-async function annotateSingleText(text, settings) {
+async function annotateSingleText(text, settings, dictionaryIndex) {
   if (!text || !text.trim()) {
     return { text, tokens: [{ surface: text }] };
   }
@@ -1007,7 +1014,7 @@ async function annotateSingleText(text, settings) {
           continue;
         }
         try {
-          const tokens = await getFuriganaTokensForChunk(chunk, settings);
+          const tokens = await getFuriganaTokensForChunk(chunk, settings, dictionaryIndex);
           if (!tokens.length) {
             mergedTokens.push({ surface: chunk, furigana: "" });
           } else {
@@ -1124,7 +1131,7 @@ function isInvalidParamsError(error) {
   return /invalid params/i.test(message);
 }
 
-async function getFuriganaTokensForChunk(text, settings) {
+async function getFuriganaTokensForChunk(text, settings, dictionaryIndex) {
   const cacheKey = `${settings.annotationEngine}:${text}`;
   if (furiganaCache.has(cacheKey)) {
     return furiganaCache.get(cacheKey);
@@ -1134,7 +1141,7 @@ async function getFuriganaTokensForChunk(text, settings) {
   if (settings.annotationEngine === C.ANNOTATION_ENGINES.YAHOO_API) {
     tokens = await requestYahooFurigana(settings.clientId, text);
   } else {
-    tokens = await createLocalDictionaryTokens(text);
+    tokens = createLocalDictionaryTokensSync(text, dictionaryIndex);
   }
 
   const normalizedTokens = normalizeTokensForText(tokens, text);
@@ -1242,11 +1249,12 @@ async function requestYahooFurigana(clientId, text) {
 
 async function waitForApiSlot() {
   const now = Date.now();
-  const waitUntil = Math.max(nextApiRequestAt, quotaBackoffUntil);
+  const waitUntil = Math.max(nextApiRequestAt, quotaBackoffUntil, now);
+  nextApiRequestAt = waitUntil + (C.LIMITS.API_MIN_INTERVAL_MS || 260);
+
   if (waitUntil > now) {
     await sleep(waitUntil - now);
   }
-  nextApiRequestAt = Date.now() + (C.LIMITS.API_MIN_INTERVAL_MS || 260);
 }
 
 async function requestYahooFuriganaOnce(clientId, text) {
@@ -1375,6 +1383,10 @@ function flattenYahooWords(words, target = []) {
 
 async function createLocalDictionaryTokens(text) {
   const dictionaryIndex = await getLocalDictionaryIndex();
+  return createLocalDictionaryTokensSync(text, dictionaryIndex);
+}
+
+function createLocalDictionaryTokensSync(text, dictionaryIndex) {
   return buildDictionaryTokens(text, dictionaryIndex, MOCK_CHAR_READINGS);
 }
 
@@ -1435,8 +1447,21 @@ function buildDictionaryTokens(text, dictionaryIndex, characterReadings) {
   const tokens = [];
   let index = 0;
 
+  let nextLookupIndex = -1;
+  let nextLookupResult = null;
+
+  function getLongestEntry(idx) {
+    if (idx === nextLookupIndex) {
+      return nextLookupResult;
+    }
+    const res = findLongestDictionaryEntry(text, idx, dictionaryIndex);
+    nextLookupIndex = idx;
+    nextLookupResult = res;
+    return res;
+  }
+
   while (index < text.length) {
-    const longestWord = findLongestDictionaryEntry(text, index, dictionaryIndex);
+    const longestWord = getLongestEntry(index);
     if (longestWord) {
       tokens.push({ surface: longestWord.surface, furigana: longestWord.reading });
       index += longestWord.surface.length;
@@ -1456,7 +1481,7 @@ function buildDictionaryTokens(text, dictionaryIndex, characterReadings) {
     const start = index;
     index += 1;
     while (index < text.length) {
-      const hasWordMatch = findLongestDictionaryEntry(text, index, dictionaryIndex);
+      const hasWordMatch = getLongestEntry(index);
       const isKanji = Japanese.isKanji(text[index]);
       if (hasWordMatch || isKanji) {
         break;
@@ -1516,12 +1541,17 @@ function insertDictionaryEntry(root, surface, reading) {
 }
 
 function findLongestDictionaryEntry(text, startIndex, dictionaryIndex) {
-  let node = dictionaryIndex;
-  let bestMatch = null;
+  const firstChar = text[startIndex];
+  let node = dictionaryIndex.children[firstChar];
+  if (!node) {
+    return null;
+  }
 
-  for (let cursor = startIndex; cursor < text.length; cursor += 1) {
+  let bestMatch = node.matches.length > 0 ? node.matches[0] : null;
+
+  for (let cursor = startIndex + 1; cursor < text.length; cursor += 1) {
     const char = text[cursor];
-    node = node?.children?.[char];
+    node = node.children[char];
     if (!node) {
       break;
     }

@@ -29,6 +29,10 @@
   const furiganaReferencePrefix = document.getElementById("furiganaReferencePrefix");
   const furiganaReferenceLink = document.getElementById("furiganaReferenceLink");
   const feedback = document.getElementById("feedback");
+  const feedbackSectionTitle = document.getElementById("feedbackSectionTitle");
+  const feedbackSectionDescription = document.getElementById("feedbackSectionDescription");
+  const authorLabel = document.getElementById("authorLabel");
+  const feedbackLinkText = document.getElementById("feedbackLinkText");
 
   function t(key, vars = {}) {
     return typeof I18N?.t === "function" ? I18N.t(key, vars) : key;
@@ -115,6 +119,10 @@
     step3.textContent = t("options_step_3");
     furiganaReferencePrefix.textContent = `${t("options_furigana_reference")}:`;
     furiganaReferenceLink.textContent = "FuriganaService V2";
+    feedbackSectionTitle.textContent = t("options_feedback_title");
+    feedbackSectionDescription.textContent = t("options_feedback_description");
+    authorLabel.textContent = t("options_author_label");
+    feedbackLinkText.textContent = t("options_feedback_link_text");
   }
 
   async function loadSettings() {

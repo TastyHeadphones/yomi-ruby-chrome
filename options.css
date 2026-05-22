@@ -116,9 +116,7 @@ h1 {
   padding: 24px;
 }
 
-.help-panel {
-  grid-column: span 2;
-}
+/* help-panel now spans 1 column like the others */
 
 .panel-header {
   margin-bottom: 18px;
@@ -234,9 +232,7 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .help-panel {
-    grid-column: span 1;
-  }
+
 }
 
 @media (max-width: 620px) {
@@ -255,4 +251,49 @@ button:disabled {
   .button-row {
     flex-direction: column;
   }
+}
+
+.author-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.author-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-top: 4px;
+}
+
+.feedback-button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 46px;
+  margin-top: 18px;
+  padding: 11px 16px;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    background-color 120ms ease;
+}
+
+.feedback-button-link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(15, 118, 110, 0.18);
+  background: var(--accent-strong);
+  color: #ffffff;
+}
+
+.facebook-icon {
+  flex-shrink: 0;
 }

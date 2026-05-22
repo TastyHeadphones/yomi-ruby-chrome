@@ -857,7 +857,7 @@
     };
   }
 
-  async function annotateParagraph(paragraph) {
+  async function annotateParagraph(paragraph, batchResultMap = new Map()) {
     let scanned = 0;
     let replacedNodes = 0;
     let annotatedTokens = 0;
@@ -884,18 +884,35 @@
       }
 
       scanned += nodes.length;
-      const textBatch = nodes.map((node) => node.nodeValue);
-      const batchResponse = await chrome.runtime.sendMessage({
-        type: C.MESSAGE_TYPES.ANNOTATE_TEXT_BATCH,
-        payload: { texts: textBatch }
-      });
 
-      if (!batchResponse?.ok) {
-        return {
-          ok: false,
-          error: batchResponse?.error || "batch_request_failed",
-          details: batchResponse?.details || "Background annotation batch failed."
-        };
+      // Look up nodes in batchResultMap. Collect any that are missing.
+      const missingTexts = [];
+      for (const node of nodes) {
+        if (node.nodeValue && !batchResultMap.has(node.nodeValue)) {
+          missingTexts.push(node.nodeValue);
+        }
+      }
+
+      if (missingTexts.length > 0) {
+        const uniqueMissing = [...new Set(missingTexts)];
+        const batchResponse = await chrome.runtime.sendMessage({
+          type: C.MESSAGE_TYPES.ANNOTATE_TEXT_BATCH,
+          payload: { texts: uniqueMissing }
+        });
+
+        if (batchResponse?.ok && Array.isArray(batchResponse.results)) {
+          for (let j = 0; j < uniqueMissing.length; j++) {
+            if (batchResponse.results[j]) {
+              batchResultMap.set(uniqueMissing[j], batchResponse.results[j]);
+            }
+          }
+        } else {
+          return {
+            ok: false,
+            error: batchResponse?.error || "batch_request_failed",
+            details: batchResponse?.details || "Background annotation batch failed."
+          };
+        }
       }
 
       for (let index = 0; index < nodes.length; index += 1) {
@@ -908,7 +925,7 @@
           };
         }
         const node = nodes[index];
-        const result = batchResponse.results?.[index];
+        const result = batchResultMap.get(node.nodeValue);
         processedNodes.add(node);
 
         if (!node.isConnected) {
@@ -994,6 +1011,86 @@
         t("content_starting_annotation")
       );
 
+      // Local batch result cache for this page annotation run.
+      const batchResultMap = new Map();
+
+      // Collect all text nodes across all paragraphs first to query in bulk
+      const preFetchTextSet = new Set();
+      const tempProcessed = new WeakSet();
+
+      for (const paragraph of paragraphs) {
+        const nodes = Dom.collectAnnotatableTextNodes(paragraph, {
+          maxNodes: C.LIMITS.MAX_TEXT_NODES_PER_PARAGRAPH,
+          maxLength: C.LIMITS.MAX_TEXT_LENGTH_PER_NODE,
+          processedNodes: tempProcessed
+        });
+        for (const node of nodes) {
+          if (node.nodeValue) {
+            preFetchTextSet.add(node.nodeValue);
+          }
+        }
+      }
+
+      // Also collect from the root to catch any additional text nodes
+      const rootNodes = Dom.collectAnnotatableTextNodes(root, {
+        maxNodes: 2000,
+        maxLength: C.LIMITS.MAX_TEXT_LENGTH_PER_NODE,
+        processedNodes: tempProcessed
+      });
+      for (const node of rootNodes) {
+        if (node.nodeValue) {
+          preFetchTextSet.add(node.nodeValue);
+        }
+      }
+
+      const allTexts = Array.from(preFetchTextSet);
+      if (allTexts.length > 0) {
+        renderProgress(
+          0,
+          totalSteps,
+          t("content_paragraph_progress", { current: 0, total: paragraphs.length }),
+          "Analyzing page text..."
+        );
+
+        const chunkSize = 1000;
+        for (let i = 0; i < allTexts.length; i += chunkSize) {
+          if (cancelRequested) {
+            finishProgress(false, t("content_annotation_canceled"), "");
+            return {
+              ok: false,
+              error: C.ERROR_CODES.CANCELED,
+              details: t("content_annotation_canceled"),
+              canceled: true
+            };
+          }
+
+          const chunk = allTexts.slice(i, i + chunkSize);
+          const response = await chrome.runtime.sendMessage({
+            type: C.MESSAGE_TYPES.ANNOTATE_TEXT_BATCH,
+            payload: { texts: chunk }
+          });
+
+          if (response?.ok && Array.isArray(response.results)) {
+            for (let j = 0; j < chunk.length; j++) {
+              if (response.results[j]) {
+                batchResultMap.set(chunk[j], response.results[j]);
+              }
+            }
+          } else {
+            finishProgress(
+              false,
+              t("content_annotation_stopped"),
+              response?.details || response?.error || "Pre-fetch batch request failed"
+            );
+            return {
+              ok: false,
+              error: response?.error || "prefetch_failed",
+              details: response?.details || "Failed to pre-fetch page annotations."
+            };
+          }
+        }
+      }
+
       for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex += 1) {
         if (cancelRequested) {
           finishProgress(false, t("content_annotation_canceled"), "");
@@ -1005,7 +1102,7 @@
           };
         }
         const paragraph = paragraphs[paragraphIndex];
-        const result = await annotateParagraph(paragraph);
+        const result = await annotateParagraph(paragraph, batchResultMap);
         if (!result.ok) {
           if (isCanceledResult(result)) {
             finishProgress(false, t("content_annotation_canceled"), "");
@@ -1069,7 +1166,7 @@
           canceled: true
         };
       }
-      const finalResult = await annotateParagraph(root);
+      const finalResult = await annotateParagraph(root, batchResultMap);
       if (!finalResult.ok) {
         if (isCanceledResult(finalResult)) {
           finishProgress(false, t("content_annotation_canceled"), "");

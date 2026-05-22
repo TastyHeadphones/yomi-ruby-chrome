@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the offline annotation dictionary from full MeCab IPADIC CSV data."""
+"""Build the offline annotation dictionary from SudachiDict-Full raw lexicon data."""
 
 from __future__ import annotations
 
@@ -7,81 +7,115 @@ import argparse
 import csv
 import io
 import json
+import re
 import shutil
+import subprocess
 import sys
-import tarfile
-import tempfile
-import urllib.request
 from pathlib import Path
 
-
-DEFAULT_SOURCE_URL = (
-    "https://sourceforge.net/projects/mecab/files/mecab-ipadic/2.7.0-20070801/"
-    "mecab-ipadic-2.7.0-20070801.tar.gz/download"
-)
-
+DEFAULT_VERSION = "20260428"
+CLOUDFRONT_BASE_URL = "https://d2ej7fkh96fzlu.cloudfront.net/sudachidict-raw"
 
 def katakana_to_hiragana(text: str) -> str:
     return "".join(chr(ord(char) - 0x60) if "ァ" <= char <= "ヶ" else char for char in text)
 
-
-def resolve_source_path(source: str) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
-    source_text = str(source)
-    if not source_text.startswith(("http://", "https://")):
-        return Path(source_text), None
-
-    tempdir = tempfile.TemporaryDirectory(prefix="yomiruby-ipadic-")
-    archive_path = Path(tempdir.name) / "ipadic.tar.gz"
-    with urllib.request.urlopen(source_text) as response, archive_path.open("wb") as output:
-        shutil.copyfileobj(response, output)
-    return archive_path, tempdir
-
-
-def iter_ipadic_rows(archive_path: Path):
-    with tarfile.open(archive_path, "r:gz") as archive:
-        for member in archive.getmembers():
-            if not member.isfile() or not member.name.endswith(".csv"):
-                continue
-            handle = archive.extractfile(member)
-            if handle is None:
-                continue
-            text_stream = io.TextIOWrapper(handle, encoding="euc-jp", errors="ignore", newline="")
-            reader = csv.reader(text_stream)
-            for row in reader:
-                if len(row) < 12:
-                    continue
-                yield row
-
-
-def build_entries(source: str) -> tuple[int, list[list[str]]]:
-    archive_path, tempdir = resolve_source_path(source)
-    row_count = 0
-    entries: list[list[str]] = []
-
+def download_file(url: str, output_path: Path) -> None:
+    print(f"Downloading {url} to {output_path}...")
+    # First try urllib, fallback to curl if there are SSL or environment issues
     try:
-        for row in iter_ipadic_rows(archive_path):
-            surface = row[0].strip()
-            reading = row[11].strip()
-            if not surface or not reading or reading == "*":
-                continue
+        import urllib.request
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=60) as response, output_path.open("wb") as out_file:
+            shutil.copyfileobj(response, out_file)
+        return
+    except Exception as e:
+        print(f"urllib download failed: {e}. Falling back to curl...")
+        
+    # Fallback to curl command
+    try:
+        subprocess.run(
+            ["curl", "-L", "-o", str(output_path), url],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Failed to download {url} using curl: {e}")
 
-            normalized = [column.strip() for column in row]
-            normalized[11] = katakana_to_hiragana(reading)
-            entries.append(normalized)
-            row_count += 1
+def build_entries(version: str, keep_temp: bool) -> list[list[str]]:
+    kanji_pat = re.compile(r'[一-龯々〆ヵヶ]')
+    best_entries: dict[str, tuple[int, str]] = {}
+    
+    zip_filenames = ["small_lex.zip", "core_lex.zip", "notcore_lex.zip"]
+    csv_filenames = ["small_lex.csv", "core_lex.csv", "notcore_lex.csv"]
+    
+    # We will look for zip files in the current directory first, otherwise download them
+    temp_dir = None
+    try:
+        for zip_name, csv_name in zip(zip_filenames, csv_filenames):
+            local_zip = Path(zip_name)
+            if local_zip.exists():
+                zip_path = local_zip
+                print(f"Using existing local zip: {zip_path}")
+            else:
+                if temp_dir is None:
+                    # Create temporary directory inside workspace
+                    temp_dir = Path("temp_sudachi_download")
+                    temp_dir.mkdir(exist_ok=True)
+                zip_path = temp_dir / zip_name
+                url = f"{CLOUDFRONT_BASE_URL}/{version}/{zip_name}"
+                download_file(url, zip_path)
+                
+            print(f"Parsing {zip_path}...")
+            with zipfile.ZipFile(zip_path) as z:
+                with z.open(csv_name) as f:
+                    reader = csv.reader(io.TextIOWrapper(f, 'utf-8'))
+                    for row in reader:
+                        if len(row) > 11:
+                            surface = row[0].strip()
+                            reading = row[11].strip()
+                            cost_str = row[3].strip()
+                            
+                            if not surface or not reading or reading == '*':
+                                continue
+                            
+                            if not kanji_pat.search(surface):
+                                continue
+                                
+                            try:
+                                cost = int(cost_str)
+                            except ValueError:
+                                cost = 0
+                                
+                            # Keep the reading with the lowest cost for each unique surface
+                            if surface in best_entries:
+                                old_cost, old_reading = best_entries[surface]
+                                if cost < old_cost:
+                                    best_entries[surface] = (cost, reading)
+                            else:
+                                best_entries[surface] = (cost, reading)
     finally:
-        if tempdir is not None:
-            tempdir.cleanup()
-
-    return row_count, entries
-
+        if temp_dir is not None and temp_dir.exists() and not keep_temp:
+            print("Cleaning up downloaded files...")
+            shutil.rmtree(temp_dir)
+            
+    print(f"Deduplicated unique surface forms: {len(best_entries)}")
+    
+    # Convert to list of [surface, hiragana_reading]
+    final_entries = []
+    for surface, (_, reading) in best_entries.items():
+        hiragana_reading = katakana_to_hiragana(reading)
+        final_entries.append([surface, hiragana_reading])
+        
+    final_entries.sort()
+    return final_entries
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--source",
-        default=DEFAULT_SOURCE_URL,
-        help="IPADIC .tar.gz source URL or local file path",
+        "--version",
+        default=DEFAULT_VERSION,
+        help="SudachiDict version YYYYMMDD to download",
     )
     parser.add_argument(
         "--output",
@@ -89,23 +123,27 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Path to write the generated JSON dictionary",
     )
+    parser.add_argument(
+        "--keep-temp",
+        action="store_true",
+        help="Keep downloaded temporary files in temp_sudachi_download",
+    )
     return parser.parse_args()
-
 
 def main() -> int:
     args = parse_args()
-    row_count, entries = build_entries(args.source)
+    entries = build_entries(args.version, args.keep_temp)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as handle:
         json.dump(entries, handle, ensure_ascii=False, separators=(",", ":"))
 
     print(
-        f"Wrote {len(entries)} entries from {row_count} IPADIC rows to {args.output}.",
+        f"Wrote {len(entries)} entries to {args.output}.",
         file=sys.stderr,
     )
     return 0
 
-
 if __name__ == "__main__":
+    import zipfile  # Import inside the script context
     raise SystemExit(main())
