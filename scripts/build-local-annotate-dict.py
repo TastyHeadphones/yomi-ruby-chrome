@@ -87,13 +87,37 @@ def build_entries(version: str, keep_temp: bool) -> list[list[str]]:
                             except ValueError:
                                 cost = 0
                                 
-                            # Keep the reading with the lowest cost for each unique surface
+                            # Apply POS penalty to prefer common readings over proper nouns and person names
+                            pos_penalty = 0
+                            if len(row) > 8:
+                                pos1 = row[5].strip()
+                                pos2 = row[6].strip()
+                                pos3 = row[7].strip()
+                                pos4 = row[8].strip()
+                                
+                                # Skip symbols and auxiliary symbols entirely
+                                if pos1 in ("記号", "補助記号"):
+                                    continue
+                                    
+                                # Penalize verb and adjective stems of single character Kanji
+                                if len(surface) == 1 and pos1 in ("動詞", "形容詞"):
+                                    pos_penalty += 100000
+                                    
+                                # Penalize proper nouns, particularly person names
+                                if pos3 == "人名" or pos4 in ("名", "姓") or "人名" in (pos1, pos2, pos3, pos4) or "名" in (pos1, pos2, pos3, pos4) or "姓" in (pos1, pos2, pos3, pos4):
+                                    pos_penalty += 100000
+                                elif pos2 == "固有名詞" or "固有名詞" in (pos1, pos2, pos3, pos4):
+                                    pos_penalty += 10000
+                            
+                            adjusted_cost = cost + pos_penalty
+
+                            # Keep the reading with the lowest adjusted cost for each unique surface
                             if surface in best_entries:
-                                old_cost, old_reading = best_entries[surface]
-                                if cost < old_cost:
-                                    best_entries[surface] = (cost, reading)
+                                old_adjusted_cost, old_reading = best_entries[surface]
+                                if adjusted_cost < old_adjusted_cost:
+                                    best_entries[surface] = (adjusted_cost, reading)
                             else:
-                                best_entries[surface] = (cost, reading)
+                                best_entries[surface] = (adjusted_cost, reading)
     finally:
         if temp_dir is not None and temp_dir.exists() and not keep_temp:
             print("Cleaning up downloaded files...")
