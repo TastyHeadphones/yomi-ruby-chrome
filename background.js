@@ -46,7 +46,11 @@ const FALLBACK_WORD_READINGS = [
   ["映画", "えいが"],
   ["料理", "りょうり"],
   ["伊朗", "いらん"],
-  ["伊蘭", "いらん"]
+  ["伊蘭", "いらん"],
+  ["大集会", "だいじゅうかい"],
+  ["一高生", "いっこうせい"],
+  ["花菖蒲", "はなしょうぶ"],
+  ["弄る", "いじる"]
 ];
 
 const MOCK_CHAR_READINGS = {
@@ -1462,19 +1466,117 @@ function buildDictionaryTokens(text, dictionaryIndex, characterReadings) {
     return res;
   }
 
+  function getSingleCharOverride(char, txt, idx) {
+    // 1. Enclosed in parentheses (day of week: (月), (火), (水), (木), (金), (土), (日))
+    if (idx > 0 && idx + 1 < txt.length) {
+      const prev = txt[idx - 1];
+      const next = txt[idx + 1];
+      if ((prev === "(" && next === ")") || (prev === "（" && next === "）")) {
+        if (char === "月") return "げつ";
+        if (char === "火") return "か";
+        if (char === "水") return "すい";
+        if (char === "木") return "もく";
+        if (char === "金") return "きん";
+        if (char === "土") return "ど";
+        if (char === "日") return "にち";
+      }
+    }
+
+    // 2. Preceded by number (date / counter suffixes)
+    if (idx > 0) {
+      const prevChar = txt[idx - 1];
+      if (/[0-9０-９一二三四五六七八九十百千万]/.test(prevChar)) {
+        if (char === "月") return "がつ";
+        if (char === "日") return "にち";
+        if (char === "人") return "にん";
+        if (char === "名") return "めい";
+        if (char === "歳") return "さい";
+        if (char === "分" && /[0-9０-９]/.test(prevChar)) return "ふん";
+      }
+    }
+
+    // 3. Special noun suffixes (e.g. '場' preceded by Kanji but not matched as a dictionary word)
+    if (char === "場" && idx > 0) {
+      const prevChar = txt[idx - 1];
+      if (Japanese.isKanji(prevChar)) {
+        return "じょう";
+      }
+    }
+
+    // 4. Standalone '高' preceded or followed by Kanji or Katakana -> 'こう' (covers prefixes like '高機能' and suffixes like '国際高')
+    if (char === "高") {
+      let isHigh = false;
+      if (idx > 0) {
+        const prev = txt[idx - 1];
+        if (Japanese.isKanji(prev) || /[ァ-ヶ]/.test(prev)) {
+          isHigh = true;
+        }
+      }
+      if (idx + 1 < txt.length) {
+        const next = txt[idx + 1];
+        if (Japanese.isKanji(next) || /[ァ-ヶ]/.test(next)) {
+          isHigh = true;
+        }
+      }
+      if (isHigh) {
+        return "こう";
+      }
+    }
+
+    // 5. Standalone '生' preceded by school-related characters (高, 校, 学, 大, 院) -> 'せい'
+    if (char === "生" && idx > 0) {
+      const prev = txt[idx - 1];
+      if (/[高校学大院]/.test(prev)) {
+        return "せい";
+      }
+    }
+
+    return null;
+  }
+
   while (index < text.length) {
     const longestWord = getLongestEntry(index);
     if (longestWord) {
-      tokens.push({ surface: longestWord.surface, furigana: longestWord.reading });
+      let reading = longestWord.reading;
+      if (longestWord.surface === "1日" || longestWord.surface === "一日") {
+        let isDate = false;
+        if (index > 0) {
+          const prevChar = text[index - 1];
+          if (prevChar === "月") {
+            isDate = true;
+          }
+        }
+        reading = isDate ? "ついたち" : "いちにち";
+      } else if (longestWord.surface === "高から") {
+        let isSchool = false;
+        if (index > 0) {
+          const prevChar = text[index - 1];
+          if (Japanese.isKanji(prevChar) || /[ァ-ヶ]/.test(prevChar)) {
+            isSchool = true;
+          }
+        }
+        reading = isSchool ? "こうから" : "たかから";
+      } else if (longestWord.surface.length === 1) {
+        const override = getSingleCharOverride(longestWord.surface, text, index);
+        if (override !== null) {
+          reading = override;
+        }
+      }
+      tokens.push({ surface: longestWord.surface, furigana: reading });
       index += longestWord.surface.length;
       continue;
     }
 
     const currentChar = text[index];
     if (Japanese.isKanji(currentChar)) {
+      let reading = characterReadings[currentChar] || "";
+      const override = getSingleCharOverride(currentChar, text, index);
+      if (override !== null) {
+        reading = override;
+      }
       tokens.push({
         surface: currentChar,
-        furigana: characterReadings[currentChar] || ""
+        furigana: reading
       });
       index += 1;
       continue;
@@ -1498,16 +1600,18 @@ function buildDictionaryTokens(text, dictionaryIndex, characterReadings) {
 
 function buildDictionaryIndex(entries) {
   const root = createDictionaryNode();
-  const seenSurfaces = new Set();
-
-  for (const entry of entries) {
-    insertDictionaryEntry(root, entry.surface, entry.reading);
-    seenSurfaces.add(entry.surface);
+  
+  // First, insert fallback word readings so they take precedence over the dictionary entries
+  for (const [surface, reading] of FALLBACK_WORD_READINGS) {
+    insertDictionaryEntry(root, surface, reading);
   }
 
-  for (const [surface, reading] of FALLBACK_WORD_READINGS) {
-    if (surface && reading && !seenSurfaces.has(surface)) {
-      insertDictionaryEntry(root, surface, reading);
+  const seenSurfaces = new Set(FALLBACK_WORD_READINGS.map(x => x[0]));
+
+  for (const entry of entries) {
+    if (!seenSurfaces.has(entry.surface)) {
+      insertDictionaryEntry(root, entry.surface, entry.reading);
+      seenSurfaces.add(entry.surface);
     }
   }
 

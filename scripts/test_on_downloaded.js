@@ -10,11 +10,6 @@ const japaneseJs = fs.readFileSync(path.join(__dirname, '../utils/japanese.js'),
 eval(japaneseJs);
 const Japanese = globalThis.YomiRubyJapanese;
 
-// Load ruby.js
-const rubyJs = fs.readFileSync(path.join(__dirname, '../utils/ruby.js'), 'utf8');
-eval(rubyJs);
-const Ruby = globalThis.YomiRubyRuby;
-
 const MOCK_CHAR_READINGS = {
   日: "にち",
   本: "ほん",
@@ -36,10 +31,36 @@ const MOCK_CHAR_READINGS = {
 };
 
 const FALLBACK_WORD_READINGS = [
-  ["イラン", "いらん"],
-  ["テヘラン", "てへらん"],
-  ["ペルシア", "ぺるしあ"],
-  ["ペルシャ", "ぺるしゃ"],
+  ["日本語", "にほんご"],
+  ["東京都", "とうきょうと"],
+  ["日本人", "にほんじん"],
+  ["東京", "とうきょう"],
+  ["大阪", "おおさか"],
+  ["京都", "きょうと"],
+  ["日本", "にほん"],
+  ["今日", "きょう"],
+  ["明日", "あした"],
+  ["昨日", "きのう"],
+  ["私", "わたし"],
+  ["学生", "がくせい"],
+  ["先生", "せんせい"],
+  ["大学", "だいがく"],
+  ["学校", "がっこう"],
+  ["漢字", "かんじ"],
+  ["勉強", "べんきょう"],
+  ["時間", "じかん"],
+  ["言葉", "ことば"],
+  ["読書", "どくしょ"],
+  ["図書館", "としょかん"],
+  ["新幹線", "しんかんせん"],
+  ["電車", "でんしゃ"],
+  ["会社", "かいしゃ"],
+  ["仕事", "しごと"],
+  ["天気", "てんき"],
+  ["新聞", "しんぶん"],
+  ["音楽", "おんがく"],
+  ["映画", "えいが"],
+  ["料理", "りょうり"],
   ["伊朗", "いらん"],
   ["伊蘭", "いらん"],
   ["大集会", "だいじゅうかい"],
@@ -380,33 +401,28 @@ function normalizeLocalDictionaryPayload(payload) {
 const startParse = Date.now();
 const dictPayload = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/local-annotate-dict.json'), 'utf8'));
 const normalizedEntries = normalizeLocalDictionaryPayload(dictPayload);
-
-console.log("Checking if 伊朗 or 伊蘭 is in the entries:");
-const matchesIran = normalizedEntries.filter(e => e.surface === "伊朗" || e.surface === "伊蘭");
-console.log(matchesIran);
-
-console.log("Checking entries for 下, 上, 中, 語, 者:");
-console.log("下:", normalizedEntries.filter(e => e.surface === "下"));
-console.log("上:", normalizedEntries.filter(e => e.surface === "上"));
-console.log("中:", normalizedEntries.filter(e => e.surface === "中"));
-console.log("語:", normalizedEntries.filter(e => e.surface === "語"));
-console.log("者:", normalizedEntries.filter(e => e.surface === "者"));
-
 const dictIndex = buildDictionaryIndex(normalizedEntries);
 console.log(`Indexed dictionary in ${Date.now() - startParse}ms. Size: ${normalizedEntries.length} entries.`);
 
-// Read Wikipedia HTML from content.md
-const contentFilePath = '/Users/yang/.gemini/antigravity-cli/brain/d542b1c6-a32b-474b-8cb9-4864bcc0706a/.system_generated/steps/459/content.md';
-const rawHtml = fs.readFileSync(contentFilePath, 'utf8');
+// Function to process an HTML file and print its top annotated words
+function testHtmlFile(filename) {
+  const filePath = path.join(__dirname, '../temp_sudachi_download', filename);
+  if (!fs.existsSync(filePath)) {
+    console.log(`File not found: ${filePath}`);
+    return;
+  }
+  const rawHtml = fs.readFileSync(filePath, 'utf8');
 
-const blockRegex = /<(p|li|dd|dt|blockquote|td|th|h[1-6])\b[^>]*>([\s\S]*?)<\/\1>/gi;
-let match;
-const allAnnotatedTokens = [];
+  // Strip scripts and styles
+  const cleanHtml = rawHtml
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
 
-while ((match = blockRegex.exec(rawHtml)) !== null) {
-  const blockContent = match[2];
-  const textNodes = blockContent.split(/<[^>]+>/);
+  // Extract all text inside body (or just everything, since we look at text outside tags)
+  // We can use a simple tag stripper
+  const textNodes = cleanHtml.split(/<[^>]+>/);
   
+  const allAnnotatedTokens = [];
   for (const rawTextNode of textNodes) {
     const textNodeVal = rawTextNode
       .replace(/&quot;/g, '"')
@@ -414,12 +430,10 @@ while ((match = blockRegex.exec(rawHtml)) !== null) {
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&#160;/g, ' ')
-      .replace(/&nbsp;/g, ' ');
+      .replace(/&nbsp;/g, ' ')
+      .trim();
 
-    if (!textNodeVal.trim()) {
-      continue;
-    }
-    if (!Japanese.containsKanji(textNodeVal)) {
+    if (!textNodeVal || !Japanese.containsKanji(textNodeVal)) {
       continue;
     }
 
@@ -440,19 +454,26 @@ while ((match = blockRegex.exec(rawHtml)) !== null) {
       }
     }
   }
+
+  // Count frequencies
+  const kanjiWordMap = new Map();
+  for (const token of allAnnotatedTokens) {
+    const key = `${token.surface} -> ${token.furigana}`;
+    kanjiWordMap.set(key, (kanjiWordMap.get(key) || 0) + 1);
+  }
+
+  const sortedWords = [...kanjiWordMap.entries()].sort((a, b) => b[1] - a[1]);
+  console.log(`\n==========================================`);
+  console.log(`TOP ANNOTATED KANJI WORDS IN ${filename}:`);
+  console.log(`==========================================`);
+  console.log(sortedWords.slice(0, 100));
+
+  // Single characters
+  console.log(`\nTOP SINGLE KANJI CHARACTERS IN ${filename}:`);
+  const singleCharKanji = sortedWords.filter(entry => entry[0].split(" -> ")[0].length === 1);
+  console.log(singleCharKanji.slice(0, 30));
 }
 
-// Find single-character tokens that are Kanji and print their distribution
-const kanjiWordMap = new Map();
-for (const token of allAnnotatedTokens) {
-  const key = `${token.surface} -> ${token.furigana}`;
-  kanjiWordMap.set(key, (kanjiWordMap.get(key) || 0) + 1);
-}
-
-const sortedWords = [...kanjiWordMap.entries()].sort((a, b) => b[1] - a[1]);
-console.log("TOP ANNOTATED KANJI WORDS/CHARS:");
-console.log(sortedWords.slice(0, 100));
-
-console.log("\nSINGLE CHARACTER KANJI TOKENS WITH READINGS:");
-const singleCharKanji = sortedWords.filter(entry => entry[0].split(" -> ")[0].length === 1);
-console.log(singleCharKanji.slice(0, 50));
+testHtmlFile('yahoo.html');
+testHtmlFile('wikipedia.html');
+testHtmlFile('yahoo_news.html');

@@ -109,7 +109,10 @@ def build_entries(version: str, keep_temp: bool) -> list[list[str]]:
                                 elif pos2 == "固有名詞" or "固有名詞" in (pos1, pos2, pos3, pos4):
                                     pos_penalty += 10000
                             
-                            adjusted_cost = cost + pos_penalty
+                            # Penalize unestimated connection costs (cost == 0)
+                            zero_cost_penalty = 15000 if cost == 0 else 0
+                            
+                            adjusted_cost = cost + pos_penalty + zero_cost_penalty
 
                             # Keep the reading with the lowest adjusted cost for each unique surface
                             if surface in best_entries:
